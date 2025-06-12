@@ -186,13 +186,19 @@ export default function SpaceStation({
     state.scene.add(coreLight);
 
     const starsGeometry = new THREE.BufferGeometry();
-    const starVertices = Array.from({ length: 20000 }, () =>
-      THREE.MathUtils.randFloatSpread(2000)
-    );
+    const starVertices = [];
+    for (let i = 0; i < 20000; i++) {
+      starVertices.push(
+        THREE.MathUtils.randFloatSpread(2000), // x
+        THREE.MathUtils.randFloatSpread(2000), // y
+        THREE.MathUtils.randFloatSpread(2000) // z
+      );
+    }
     starsGeometry.setAttribute(
       "position",
       new THREE.Float32BufferAttribute(starVertices, 3)
     );
+
     const stars = new THREE.Points(
       starsGeometry,
       new THREE.PointsMaterial({
@@ -205,13 +211,19 @@ export default function SpaceStation({
     state.scene.add(stars);
 
     const dustGeometry = new THREE.BufferGeometry();
-    const dustVertices = Array.from({ length: 500 * 3 }, () =>
-      THREE.MathUtils.randFloatSpread(100)
-    );
+    const dustVertices = [];
+    for (let i = 0; i < 500; i++) {
+      dustVertices.push(
+        THREE.MathUtils.randFloatSpread(100), // x
+        THREE.MathUtils.randFloatSpread(100), // y
+        THREE.MathUtils.randFloatSpread(100) // z
+      );
+    }
     dustGeometry.setAttribute(
       "position",
       new THREE.Float32BufferAttribute(dustVertices, 3)
     );
+
     const dust = new THREE.Points(
       dustGeometry,
       new THREE.PointsMaterial({
