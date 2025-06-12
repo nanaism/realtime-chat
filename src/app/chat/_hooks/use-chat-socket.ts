@@ -41,7 +41,7 @@ export function useChatSocket({ username }: UseChatSocketProps) {
           y: Math.floor(Math.random() * 400),
         },
         color: `hsl(${Math.floor(Math.random() * 360)}, 70%, 60%)`,
-        avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${name}`,
+        avatar: `https://api.dicebear.com/7.x/lorelei-neutral/svg?seed=${name}`,
       };
 
       // socket.emit でユーザー情報をサーバーに送信

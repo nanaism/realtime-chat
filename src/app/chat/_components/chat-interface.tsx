@@ -78,7 +78,7 @@ export default function ChatInterface({
                     {message.sender !== currentUser && (
                       <Avatar className="h-8 w-8">
                         <AvatarImage
-                          src={`https://api.dicebear.com/7.x/bottts/svg?seed=${message.sender}`}
+                          src={`https://api.dicebear.com/7.x/lorelei-neutral/svg?seed=${message.sender}`}
                         />
                         <AvatarFallback>
                           {message.sender?.charAt(0) || "?"}
@@ -116,7 +116,7 @@ export default function ChatInterface({
                     {message.sender === currentUser && (
                       <Avatar className="h-8 w-8">
                         <AvatarImage
-                          src={`https://api.dicebear.com/7.x/bottts/svg?seed=${message.sender}`}
+                          src={`https://api.dicebear.com/7.x/lorelei-neutral/svg?seed=${message.sender}`}
                         />
                         <AvatarFallback>
                           {message.sender.charAt(0)}
@@ -133,7 +133,7 @@ export default function ChatInterface({
               <div className="flex items-center gap-2">
                 <Avatar className="h-8 w-8">
                   <AvatarImage
-                    src={`https://api.dicebear.com/7.x/bottts/svg?seed=${typingUsers[0]}`}
+                    src={`https://api.dicebear.com/7.x/lorelei-neutral/svg?seed=${typingUsers[0]}`}
                   />
                   <AvatarFallback>{typingUsers[0].charAt(0)}</AvatarFallback>
                 </Avatar>
