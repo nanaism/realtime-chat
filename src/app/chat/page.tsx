@@ -1,6 +1,8 @@
 "use client";
 
 import ChatInterface from "@/app/chat/_components/chat-interface";
+import UserList from "@/app/chat/_components/user-list";
+import VirtualSpace from "@/app/chat/_components/virtual-space";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { LogOut, MessageSquare, Users } from "lucide-react";
@@ -124,7 +126,12 @@ export default function ChatPage() {
 
       <div className="flex flex-1 overflow-hidden">
         <div className="hidden md:block md:w-1/2 lg:w-4/5 border-r dark:border-slate-800">
-          ビジュアルマップを表示
+          <VirtualSpace
+            users={users}
+            currentUser={currentUser}
+            onUserMove={handleUserMove}
+            typingUsers={typingUsers}
+          />
         </div>
 
         <div className="flex flex-col w-full md:w-1/2 lg:w-2/5">
@@ -142,7 +149,7 @@ export default function ChatPage() {
                   />
                 </TabsContent>
                 <TabsContent value="users" className="h-full m-0 p-0">
-                  ユーザー一覧を表示
+                  <UserList users={users} typingUsers={typingUsers} />
                 </TabsContent>
               </Tabs>
             </div>
@@ -166,7 +173,7 @@ export default function ChatPage() {
               showUserPanel ? "block" : "hidden"
             }`}
           >
-            ユーザー一覧を表示
+            <UserList users={users} typingUsers={typingUsers} />
           </div>
         </div>
       </div>
