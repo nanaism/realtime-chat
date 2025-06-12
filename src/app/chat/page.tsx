@@ -8,7 +8,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { LogOut, MessageSquare, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react"; // useMemo をインポート
 import { useChatSocket } from "./_hooks/use-chat-socket";
 
 export default function ChatPage() {
@@ -18,7 +18,6 @@ export default function ChatPage() {
   const [showUserPanel, setShowUserPanel] = useState(false);
   const [activeTab, setActiveTab] = useState("chat");
 
-  // まず、localStorageからユーザー名を取得し、なければログインページへリダイレクト
   useEffect(() => {
     const storedUsername = localStorage.getItem("username");
     if (!storedUsername) {
@@ -28,7 +27,6 @@ export default function ChatPage() {
     }
   }, [router]);
 
-  // カスタムフックを使用してチャット機能を初期化
   const {
     users,
     messages,
@@ -40,27 +38,23 @@ export default function ChatPage() {
     logout,
   } = useChatSocket({ username });
 
-  /**
-   * チャットメッセージをサーバーに送信する
-   */
+  // 修正: ユーザー名から現在のユーザーのIDを見つけ出す
+  const currentUserId = useMemo(() => {
+    return users.find((user) => user.name === username)?.id || null;
+  }, [users, username]);
+
   const handleSendMessage = () => {
     if (!inputValue.trim() || !username) return;
     sendMessage(inputValue);
     setInputValue("");
   };
 
-  /**
-   * メッセージ入力フィールドの変更をハンドルし、タイピング状態をサーバーに通知する
-   */
   const handleInputChange = (value: string) => {
     setInputValue(value);
     const isTyping = value.trim().length > 0;
     sendTypingUpdate(isTyping);
   };
 
-  /**
-   * ユーザーのアバターの位置情報をサーバーに送信する
-   */
   const handleUserMove = (
     _userId: string,
     newPosition: { x: number; y: number }
@@ -68,47 +62,31 @@ export default function ChatPage() {
     sendUserMove(newPosition);
   };
 
-  /**
-   * チャットルームからの退出処理
-   */
   const handleLeave = () => {
-    logout(); // Socketを切断
-
+    logout();
     localStorage.removeItem("username");
-
-    // コンポーネントの状態をリセット
     setUsername(null);
     setInputValue("");
     setShowUserPanel(false);
     setActiveTab("chat");
-
     router.push("/");
   };
 
-  /**
-   * ユーザーパネルの表示/非表示を切り替える
-   */
   const toggleUserPanel = () => {
     setShowUserPanel((prev) => !prev);
   };
 
-  /**
-   * 表示するタブ（チャット/ユーザーリスト）を切り替える
-   */
   const switchTab = (tab: string) => {
     setActiveTab(tab);
   };
 
   if (!username || !isSocketInitialized) {
-    // ユーザー名設定とSocket初期化が完了するまでローディング表示
     return (
       <div className="flex justify-center items-center h-screen">
         Loading...
       </div>
     );
   }
-
-  const currentUser = username;
 
   return (
     <div className="flex flex-col h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -128,7 +106,8 @@ export default function ChatPage() {
         <div className="hidden md:block md:w-1/2 lg:w-4/5 border-r dark:border-slate-800">
           <VirtualSpace
             users={users}
-            currentUser={currentUser}
+            // 修正: 文字列型のユーザーIDが必要なので、nullの場合は空文字列を渡す
+            currentUser={currentUserId || ""}
             onUserMove={handleUserMove}
             typingUsers={typingUsers}
           />
@@ -142,7 +121,7 @@ export default function ChatPage() {
                   <ChatInterface
                     messages={messages}
                     typingUsers={typingUsers}
-                    currentUser={currentUser}
+                    currentUser={username} // ChatUIにはユーザー名を渡す
                     inputValue={inputValue}
                     setInputValue={handleInputChange}
                     onSendMessage={handleSendMessage}
@@ -155,11 +134,10 @@ export default function ChatPage() {
             </div>
 
             <div className="md:hidden h-full">
-              {/* モバイル表示: チャットインターフェースは常に表示 */}
               <ChatInterface
                 messages={messages}
                 typingUsers={typingUsers}
-                currentUser={currentUser}
+                currentUser={username}
                 inputValue={inputValue}
                 setInputValue={handleInputChange}
                 onSendMessage={handleSendMessage}
@@ -167,7 +145,6 @@ export default function ChatPage() {
             </div>
           </div>
 
-          {/* モバイル用ユーザーリスト、toggleUserPanelで表示/非表示を切り替え */}
           <div
             className={`md:hidden border-t dark:border-slate-800 ${
               showUserPanel ? "block" : "hidden"
@@ -206,7 +183,6 @@ export default function ChatPage() {
             </Button>
           </div>
 
-          {/* モバイル表示用ユーザーパネルの切り替えボタン */}
           <Button
             variant="outline"
             size="sm"
