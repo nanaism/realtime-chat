@@ -1,0 +1,25 @@
+# app.yaml
+
+runtime: custom
+env: flex
+
+network:
+  session_affinity: true
+
+# このセクションを追加または編集
+env_variables:
+  # ここに、デプロイ後に公開されるあなたのアプリのURLを記載します
+  # 通常は "https://[あなたのプロジェクトID].an.r.appspot.com" という形式です
+  NEXT_PUBLIC_WS_URL: "https://socketio-app-462715.an.r.appspot.com"
+
+resources:
+  cpu: 1
+  memory_gb: 1
+  disk_size_gb: 10
+
+automatic_scaling:
+  min_num_instances: 1
+  max_num_instances: 2
+  cool_down_period_sec: 180
+  cpu_utilization:
+    target_utilization: 0.7

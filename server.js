@@ -1,3 +1,5 @@
+// server.js (修正後)
+
 /**
  * Next.jsカスタムサーバー兼Socket.IOサーバー
  *
@@ -9,11 +11,12 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 
 const dev = process.env.NODE_ENV !== "production";
-const hostname = "localhost";
-const port = 3000;
+// App Engineから指定されるポート、なければ開発用に3000を使用
+const port = process.env.PORT || 3000;
 
 // Next.jsアプリケーションの初期化
-const app = next({ dev, hostname, port });
+// App Engine上ではホスト名を指定しない
+const app = next({ dev });
 const handle = app.getRequestHandler();
 
 // 接続中のユーザー情報を保持するMapオブジェクト
@@ -21,8 +24,18 @@ const handle = app.getRequestHandler();
 const users = new Map();
 
 app.prepare().then(() => {
-  const server = createServer(handle);
-  const io = new Server(server);
+  // ★ 変更点: Next.jsのハンドラーをcreateServerに直接渡すのではなく、
+  // リクエストをパースして渡す、より標準的な方法に変更します。
+  const server = createServer((req, res) => {
+    // URLをパースしてNext.jsに処理を委譲
+    handle(req, res);
+  });
+
+  const io = new Server(server, {
+    // 必要に応じてSocket.IOのオプションをここに記述
+  });
+
+  // --- ここから下のSocket.IO関連のロジックは変更ありません ---
 
   // デバッグ用：接続状態の監視
   io.engine.on("connection_error", (err) => {
@@ -37,16 +50,12 @@ app.prepare().then(() => {
     socket.on("user:login", (userData) => {
       console.log("ログインデータ受信:", userData);
 
-      // サーバー側でsocket.idをユーザーIDとして正式に割り当てる
       const updatedUserData = {
         ...userData,
         id: socket.id,
       };
-
-      // ユーザー情報をMapに保存
       users.set(socket.id, updatedUserData);
 
-      // 新規ユーザーの入室を全クライアントに通知 (システムメッセージ)
       io.emit("message:new", {
         id: `msg-${Date.now()}`,
         type: "system",
@@ -54,7 +63,6 @@ app.prepare().then(() => {
         timestamp: new Date().toISOString(),
       });
 
-      // 接続中のユーザー一覧を全クライアントに送信
       const usersList = Array.from(users.values());
       io.emit("users:update", usersList);
 
@@ -69,22 +77,16 @@ app.prepare().then(() => {
         ...message,
         id: `msg-${Date.now()}`,
       };
-
-      // 全クライアントにメッセージをブロードキャスト
       io.emit("message:new", messageWithId);
-
       console.log(`メッセージ: ${message.content} from ${message.sender}`);
     });
 
     // クライアントからユーザーの位置情報更新を受信した際の処理
     socket.on("user:move", (position) => {
-      // 該当ユーザーの情報を取得・更新
       const userData = users.get(socket.id);
       if (userData) {
         userData.position = position;
         users.set(socket.id, userData);
-
-        // 更新された位置情報を全クライアントに送信
         const usersList = Array.from(users.values());
         io.emit("users:update", usersList);
         console.log(
@@ -99,7 +101,6 @@ app.prepare().then(() => {
     socket.on("user:typing", (isTyping) => {
       const userData = users.get(socket.id);
       if (userData) {
-        // 送信者以外の全クライアントにタイピング状態をブロードキャスト
         socket.broadcast.emit("user:typing", {
           userId: userData.id,
           name: userData.name,
@@ -111,23 +112,16 @@ app.prepare().then(() => {
     // クライアントとの接続が切断された際の処理
     socket.on("disconnect", () => {
       const userData = users.get(socket.id);
-
       if (userData) {
-        // ユーザー情報をMapから削除
         users.delete(socket.id);
-
-        // ユーザーの退室を全クライアントに通知 (システムメッセージ)
         io.emit("message:new", {
           id: `msg-${Date.now()}`,
           type: "system",
           content: `${userData.name} が退室しました`,
           timestamp: new Date().toISOString(),
         });
-
-        // 更新されたユーザー一覧を送信
         const usersList = Array.from(users.values());
         io.emit("users:update", usersList);
-
         console.log(`切断: ${userData.name} (${socket.id})`);
         console.log(`現在のユーザー数: ${users.size}`);
         console.log("ユーザーリスト:", usersList);
@@ -140,7 +134,9 @@ app.prepare().then(() => {
       console.error("HTTPサーバー起動エラー:", err);
       process.exit(1);
     })
+    // ★ 変更点: ホスト名を指定せず、環境変数から取得したポートでリッスン
     .listen(port, () => {
-      console.log(`> サーバー起動: http://${hostname}:${port}`);
+      // ログ出力を環境に合わせて変更
+      console.log(`> Ready on http://localhost:${port}`);
     });
 });

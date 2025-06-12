@@ -520,32 +520,28 @@ export default function SpaceStation({
     >
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 
-      {/* UIオーバーレイとタイトル */}
+      {/* UIオーバーレイとタイトル - 日本語で自然なデザイン */}
       <div className="absolute top-6 left-0 right-0 text-center z-10 pointer-events-none">
         <h2
-          className="text-5xl font-black tracking-wider"
+          className="text-4xl font-bold"
           style={{
-            background:
-              "linear-gradient(45deg, #60a5fa 0%, #c084fc 25%, #f472b6 50%, #60a5fa 75%, #c084fc 100%)",
-            backgroundSize: "200% 200%",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            backgroundClip: "text",
-            animation: "gradient 5s ease infinite",
-            textShadow: "0 0 40px rgba(139, 92, 246, 0.5)",
-            filter: "drop-shadow(0 0 20px rgba(139, 92, 246, 0.8))",
+            color: "#f0f0f0",
+            textShadow: "0 0 15px rgba(120, 155, 240, 0.8)",
+            fontFamily:
+              '"Hiragino Kaku Gothic Pro", "Yu Gothic", Meiryo, sans-serif',
           }}
         >
-          COSMIC NEXUS
+          リアルタイムチャット
         </h2>
         <p
-          className="text-sm mt-2 font-mono opacity-70"
+          className="text-sm mt-2 opacity-80"
           style={{
-            color: "#60a5fa",
-            textShadow: "0 0 10px rgba(96, 165, 250, 0.8)",
+            color: "#a0d8ff",
+            fontFamily:
+              '"Hiragino Kaku Gothic Pro", "Yu Gothic", Meiryo, sans-serif',
           }}
         >
-          DEEP SPACE COLLABORATION PLATFORM
+          ドラッグやスクロールで宇宙を探索してみてね
         </p>
       </div>
 

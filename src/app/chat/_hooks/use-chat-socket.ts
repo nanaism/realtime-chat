@@ -187,22 +187,22 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     },
     [username, currentUserSocketId]
   );
+  // ...
 
   /**
    * ユーザーのアバター位置を更新する
    */
   const sendUserMove = useCallback(
     (newPosition: { x: number; y: number }) => {
-      if (
-        currentUserSocketId &&
-        username &&
-        users.some((u) => u.id === currentUserSocketId && u.name === username)
-      ) {
+      // 修正: 条件を緩和し、自分のソケットIDが存在すれば送信するようにする
+      if (currentUserSocketId) {
         socket.emit("user:move", newPosition);
       }
     },
-    [currentUserSocketId, username, users]
+    [currentUserSocketId] // 依存配列から users と username を削除
   );
+
+  // ...
 
   /**
    * チャットルームからログアウトし、ソケット接続を切断する
