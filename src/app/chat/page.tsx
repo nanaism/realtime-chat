@@ -92,9 +92,9 @@ export default function ChatPage() {
     <div className="flex flex-col h-screen bg-zinc-50 dark:bg-zinc-950">
       <header className="py-4 px-8 flex items-center justify-between border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">🐟🐟</span>
+          <span className="text-2xl">✨️✨️</span>
           <h1 className="text-xl font-semibold">
-            <Link href="/">Sakana Office</Link>
+            <Link href="/">Oga Office</Link>
           </h1>
         </div>
         <div className="text-sm text-zinc-500 dark:text-zinc-400">

@@ -27,7 +27,7 @@ interface SpaceStationProps {
   onUserMove: (userId: string, newPosition: { x: number; y: number }) => void;
 }
 
-// --- カメラコントローラークラス ---
+// --- カメラコントローラークラス (変更なし) ---
 class CameraController {
   camera: THREE.PerspectiveCamera;
   domElement: HTMLElement;
@@ -47,7 +47,6 @@ class CameraController {
     this.domElement = domElement;
     this.update();
   }
-
   update() {
     const offset = new THREE.Vector3()
       .copy(this.camera.position)
@@ -60,19 +59,17 @@ class CameraController {
       Math.min(Math.PI - 0.1, this.spherical.phi)
     );
     this.spherical.radius *= this.scale;
-    this.spherical.radius = Math.max(20, Math.min(150, this.spherical.radius));
+    this.spherical.radius = Math.max(30, Math.min(200, this.spherical.radius));
     offset.setFromSpherical(this.spherical);
     this.camera.position.copy(this.target).add(offset);
     this.camera.lookAt(this.target);
     this.sphericalDelta.set(0, 0, 0);
     this.scale = 1;
   }
-
   onMouseDown(event: MouseEvent) {
     this.isOrbiting = true;
     this.rotateStart.set(event.clientX, event.clientY);
   }
-
   onMouseMove(event: MouseEvent) {
     if (!this.isOrbiting) return;
     this.rotateEnd.set(event.clientX, event.clientY);
@@ -86,11 +83,9 @@ class CameraController {
       (2 * Math.PI * this.rotateDelta.y) / element.clientHeight;
     this.rotateStart.copy(this.rotateEnd);
   }
-
   onMouseUp() {
     this.isOrbiting = false;
   }
-
   onMouseWheel(event: WheelEvent) {
     if (event.deltaY < 0) {
       this.scale /= Math.pow(0.95, this.zoomSpeed);
@@ -119,6 +114,8 @@ export default function SpaceStation({
     plane: THREE.Mesh | null;
     avatarMeshes: { [key: string]: THREE.Group };
     avatarElements: { [key: string]: HTMLDivElement | null };
+    blackHoleGroup: THREE.Group | null;
+    volumetricNebula: THREE.Mesh | null;
   }>({
     scene: null,
     camera: null,
@@ -128,9 +125,10 @@ export default function SpaceStation({
     plane: null,
     avatarMeshes: {},
     avatarElements: {},
+    blackHoleGroup: null,
+    volumetricNebula: null,
   });
 
-  // 修正: ドラッグ状態とカメラ操作状態をuseStateで管理
   const [draggedUserId, setDraggedUserId] = useState<string | null>(null);
   const [isOrbitingCamera, setIsOrbitingCamera] = useState(false);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
@@ -141,204 +139,214 @@ export default function SpaceStation({
     }, 50)
   ).current;
 
-  // --- Three.js初期化 ---
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
     const state = threeJsState.current;
-
     const width = containerRef.current.offsetWidth;
     const height = containerRef.current.offsetHeight;
-
     state.scene = new THREE.Scene();
-    state.scene.fog = new THREE.FogExp2(0x00000a, 0.005);
-
-    state.camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 2000);
-    state.camera.position.set(0, 15, 60);
-
+    state.scene.fog = new THREE.FogExp2(0x00000a, 0.006);
+    state.camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 5000);
+    state.camera.position.set(0, 40, 90);
     state.renderer = new THREE.WebGLRenderer({
       canvas: canvasRef.current,
       antialias: true,
       alpha: true,
     });
     state.renderer.setSize(width, height);
-    state.renderer.setPixelRatio(window.devicePixelRatio);
+    state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     state.renderer.outputColorSpace = THREE.SRGBColorSpace;
-
     state.controls = new CameraController(
       state.camera,
       state.renderer.domElement
     );
-
     const renderPass = new RenderPass(state.scene, state.camera);
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(width, height),
-      1.0,
-      0.1,
-      0.1
+      0.7,
+      0.5,
+      0.2
     );
     state.composer = new EffectComposer(state.renderer);
     state.composer.addPass(renderPass);
     state.composer.addPass(bloomPass);
-
-    state.scene.add(new THREE.HemisphereLight(0xccccff, 0x080820, 0.8));
-    const coreLight = new THREE.PointLight(0xfbbf24, 5, 50, 1.5);
-    state.scene.add(coreLight);
-
-    const starsGeometry = new THREE.BufferGeometry();
+    state.scene.add(new THREE.HemisphereLight(0x6080ff, 0x302040, 0.6));
+    const starCount = 25000;
     const starVertices = [];
-    for (let i = 0; i < 20000; i++) {
+    const starColors = [];
+    const starSizes = [];
+    const baseColor = new THREE.Color();
+    for (let i = 0; i < starCount; i++) {
       starVertices.push(
-        THREE.MathUtils.randFloatSpread(2000), // x
-        THREE.MathUtils.randFloatSpread(2000), // y
-        THREE.MathUtils.randFloatSpread(2000) // z
+        THREE.MathUtils.randFloatSpread(4000),
+        THREE.MathUtils.randFloatSpread(4000),
+        THREE.MathUtils.randFloatSpread(4000)
       );
+      baseColor.setHSL(
+        0.55 + Math.random() * 0.1,
+        0.8,
+        0.8 + Math.random() * 0.2
+      );
+      starColors.push(baseColor.r, baseColor.g, baseColor.b);
+      starSizes.push(1.0 + Math.random() * 2.5);
     }
+    const starsGeometry = new THREE.BufferGeometry();
     starsGeometry.setAttribute(
       "position",
       new THREE.Float32BufferAttribute(starVertices, 3)
     );
-
-    const stars = new THREE.Points(
-      starsGeometry,
-      new THREE.PointsMaterial({
-        color: 0xffffff,
-        size: 0.7,
-        transparent: true,
-        opacity: 0.8,
-      })
+    starsGeometry.setAttribute(
+      "color",
+      new THREE.Float32BufferAttribute(starColors, 3)
     );
+    starsGeometry.setAttribute(
+      "size",
+      new THREE.Float32BufferAttribute(starSizes, 1)
+    );
+
+    // ★★★ ここが修正点 ★★★
+    const starsMaterial = new THREE.ShaderMaterial({
+      uniforms: { time: { value: 0 } },
+      vertexShader: `
+            attribute float size;
+            // attribute vec3 color; <--- この行を削除！ Three.jsが自動で追加してくれます。
+            varying vec3 vColor;
+            varying float vSize;
+            void main() {
+                vColor = color; // この'color'はThree.jsが提供してくれるattributeを指します
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                gl_PointSize = size * (200.0 / -mvPosition.z);
+                gl_Position = projectionMatrix * mvPosition;
+                vSize = size;
+            }
+        `,
+      fragmentShader: `
+            uniform float time;
+            varying vec3 vColor;
+            varying float vSize;
+            void main() {
+                float dist = length(gl_PointCoord - vec2(0.5));
+                float flicker = sin((time * vSize) + (vSize * 100.0)) * 0.5 + 0.5;
+                float strength = 1.0 - smoothstep(0.4, 0.5, dist);
+                gl_FragColor = vec4(vColor, strength * (flicker * 0.3 + 0.7));
+            }
+        `,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      vertexColors: true, // この設定が重要
+    });
+    // ★★★ 修正ここまで ★★★
+
+    const stars = new THREE.Points(starsGeometry, starsMaterial);
     state.scene.add(stars);
 
-    const dustGeometry = new THREE.BufferGeometry();
-    const dustVertices = [];
-    for (let i = 0; i < 500; i++) {
-      dustVertices.push(
-        THREE.MathUtils.randFloatSpread(100), // x
-        THREE.MathUtils.randFloatSpread(100), // y
-        THREE.MathUtils.randFloatSpread(100) // z
-      );
-    }
-    dustGeometry.setAttribute(
-      "position",
-      new THREE.Float32BufferAttribute(dustVertices, 3)
-    );
-
-    const dust = new THREE.Points(
-      dustGeometry,
-      new THREE.PointsMaterial({
-        color: 0xaaaaaa,
-        size: 0.1,
-        transparent: true,
-        opacity: 0.5,
-      })
-    );
-    state.scene.add(dust);
-
-    const createNebula = (
-      color1: number,
-      color2: number,
-      pos: THREE.Vector3,
-      scale: number
-    ) => {
-      const material = new THREE.ShaderMaterial({
-        uniforms: {
-          time: { value: 0 },
-          color1: { value: new THREE.Color(color1) },
-          color2: { value: new THREE.Color(color2) },
-        },
-        vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-        fragmentShader: `uniform float time; uniform vec3 color1; uniform vec3 color2; varying vec2 vUv; float random(vec2 p){return fract(sin(dot(p.xy,vec2(12.9898,78.233)))*43758.5453123);} float noise(vec2 p){vec2 i=floor(p);vec2 f=fract(p);f=f*f*(3.-2.*f);return mix(mix(random(i),random(i+vec2(1.,0.)),f.x),mix(random(i+vec2(0.,1.)),random(i+vec2(1.,1.)),f.x),f.y);} float fbm(vec2 p){float v=0.;float a=.5;for(int i=0;i<5;++i){v+=a*noise(p);p=p*2.;a*=.5;}return v;} void main(){vec2 p=vUv*2.-1.;float n=fbm(p*2.5+time*.1);float dist=1.-length(p);vec3 color=mix(color1,color2,smoothstep(0.,1.,n));gl_FragColor=vec4(color,dist*n*.5);}`,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      });
-      const nebula = new THREE.Mesh(
-        new THREE.PlaneGeometry(300, 300),
-        material
-      );
-      nebula.position.copy(pos);
-      nebula.scale.setScalar(scale);
-      return nebula;
-    };
-    state.scene.add(
-      createNebula(0x8b5cf6, 0x3b82f6, new THREE.Vector3(150, 50, -250), 2.0)
-    );
-    state.scene.add(
-      createNebula(0xf472b6, 0xfbbf24, new THREE.Vector3(-200, -30, -300), 2.5)
-    );
-
-    const stationGroup = new THREE.Group();
-    state.scene.add(stationGroup);
-
-    const coreMaterial = new THREE.ShaderMaterial({
+    const nebulaGeometry = new THREE.SphereGeometry(1500, 64, 64);
+    const nebulaMaterial = new THREE.ShaderMaterial({
       uniforms: {
         time: { value: 0 },
-        color: { value: new THREE.Color(0xfbbf24) },
+        baseColor: { value: new THREE.Color(0x100520) },
+        nebulaColor1: { value: new THREE.Color(0x8a2be2) },
+        nebulaColor2: { value: new THREE.Color(0x4a00e0) },
+        cameraPos: { value: state.camera.position },
       },
-      vertexShader: `varying vec3 vNormal; uniform float time; void main() { vNormal = normalize(normalMatrix * normal); float pulse = sin(time * 3.0 + position.y * 2.0) * 0.1 + 1.0; gl_Position = projectionMatrix * modelViewMatrix * vec4(position * pulse, 1.0); }`,
-      fragmentShader: `varying vec3 vNormal; uniform float time; uniform vec3 color; void main() { float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0); vec3 finalColor = color * (intensity + pow(sin(time * 5.0) * 0.5 + 0.5, 2.0) * 0.5); gl_FragColor = vec4(finalColor, 1.0); }`,
+      vertexShader: `varying vec3 vWorldPosition; void main() { vec4 worldPosition = modelMatrix * vec4(position, 1.0); vWorldPosition = worldPosition.xyz; gl_Position = projectionMatrix * viewMatrix * worldPosition; }`,
+      fragmentShader: `varying vec3 vWorldPosition; uniform vec3 baseColor; uniform vec3 nebulaColor1; uniform vec3 nebulaColor2; uniform vec3 cameraPos; uniform float time; vec4 permute(vec4 x) { return mod(((x*34.0)+1.0)*x, 289.0); } vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; } float snoise(vec3 v) { const vec2 C = vec2(1.0/6.0, 1.0/3.0); const vec4 D = vec4(0.0, 0.5, 1.0, 2.0); vec3 i = floor(v + dot(v, C.yyy)); vec3 x0 = v - i + dot(i, C.xxx); vec3 g = step(x0.yzx, x0.xyz); vec3 l = 1.0 - g; vec3 i1 = min(g.xyz, l.zxy); vec3 i2 = max(g.xyz, l.zxy); vec3 x1 = x0 - i1 + C.xxx; vec3 x2 = x0 - i2 + C.yyy; vec3 x3 = x0 - D.yyy; i = mod(i, 289.0); vec4 p = permute(permute(permute(i.z + vec4(0.0, i1.z, i2.z, 1.0)) + i.y + vec4(0.0, i1.y, i2.y, 1.0)) + i.x + vec4(0.0, i1.x, i2.x, 1.0)); float n_ = 0.142857142857; vec3 ns = n_ * D.wyz - D.xzx; vec4 j = p - 49.0 * floor(p * ns.z * ns.z); vec4 x_ = floor(j * ns.z); vec4 y_ = floor(j - 7.0 * x_); vec4 x = x_ * ns.x + ns.yyyy; vec4 y = y_ * ns.x + ns.yyyy; vec4 h = 1.0 - abs(x) - abs(y); vec4 b0 = vec4(x.xy, y.xy); vec4 b1 = vec4(x.zw, y.zw); vec4 s0 = floor(b0) * 2.0 + 1.0; vec4 s1 = floor(b1) * 2.0 + 1.0; vec4 sh = -step(h, vec4(0.0)); vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy; vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww; vec3 p0 = vec3(a0.xy, h.x); vec3 p1 = vec3(a0.zw, h.y); vec3 p2 = vec3(a1.xy, h.z); vec3 p3 = vec3(a1.zw, h.w); vec4 norm = taylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3))); p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w; vec4 m = max(0.6 - vec4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0); m = m * m; return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3))); } float fbm(vec3 p) { float value = 0.0; float amplitude = 0.5; for (int i = 0; i < 6; i++) { value += amplitude * snoise(p); p *= 2.0; amplitude *= 0.5; } return value; } void main() { vec3 viewDirection = normalize(vWorldPosition - cameraPos); vec3 step = viewDirection * 50.0; vec3 currentPos = vWorldPosition; float density = 0.0; for (int i = 0; i < 8; i++) { float noise = fbm(currentPos * 0.002 + time * 0.05); density += max(0.0, noise) * 0.05; currentPos -= step; } vec3 finalColor = mix(nebulaColor1, nebulaColor2, density); finalColor = mix(baseColor, finalColor, density); gl_FragColor = vec4(finalColor, density * 0.8); }`,
+      side: THREE.BackSide,
+      transparent: true,
       blending: THREE.AdditiveBlending,
     });
-    const core = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(4, 5),
-      coreMaterial
+    state.volumetricNebula = new THREE.Mesh(nebulaGeometry, nebulaMaterial);
+    state.scene.add(state.volumetricNebula);
+
+    state.blackHoleGroup = new THREE.Group();
+    state.scene.add(state.blackHoleGroup);
+    const eventHorizon = new THREE.Mesh(
+      new THREE.SphereGeometry(8, 64, 64),
+      new THREE.MeshBasicMaterial({ color: 0x000000 })
     );
-    stationGroup.add(core);
-
-    const createEnergyRing = (
-      radius: number,
-      color: THREE.Color,
-      speed: number
-    ) => {
-      const material = new THREE.ShaderMaterial({
-        uniforms: {
-          time: { value: 0 },
-          ringColor: { value: color },
-          speed: { value: speed },
-        },
-        vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-        fragmentShader: `varying vec2 vUv; uniform float time; uniform vec3 ringColor; uniform float speed; float noise(vec2 p){return fract(sin(dot(p.xy,vec2(12.9898,78.233)))*43758.5453);} void main() { float pattern=noise(vec2(vUv.x*200.,time*speed)); float glow=pow(abs(vUv.y-.5)*2.,2.); float intensity=pattern*(1.-glow)*.7+.3; gl_FragColor=vec4(ringColor,intensity); }`,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-      });
-      return new THREE.Mesh(
-        new THREE.TorusGeometry(radius, 0.3, 32, 200),
-        material
-      );
-    };
-    const ring1 = createEnergyRing(25, new THREE.Color(0x60a5fa), 1.0);
-    const ring2 = createEnergyRing(32, new THREE.Color(0xc084fc), -0.8);
-    ring2.rotation.x = Math.PI / 2;
-    const ring3 = createEnergyRing(39, new THREE.Color(0xf472b6), 0.6);
-    ring3.rotation.y = Math.PI / 2;
-    stationGroup.add(ring1, ring2, ring3);
-
+    state.blackHoleGroup.add(eventHorizon);
+    const diskGeometry = new THREE.RingGeometry(9, 25, 128, 8);
+    const diskMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0 },
+        color1: { value: new THREE.Color(0xfbbf24) },
+        color2: { value: new THREE.Color(0xf472b6) },
+        color3: { value: new THREE.Color(0x60a5fa) },
+      },
+      vertexShader: `varying vec2 vUv; varying float vRadius; void main() { vUv = uv; vec3 pos = position; vRadius = length(pos.xy); gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0); }`,
+      fragmentShader: `uniform float time; uniform vec3 color1; uniform vec3 color2; uniform vec3 color3; varying vec2 vUv; varying float vRadius; vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; } vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; } vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); } float snoise(vec2 v) { const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439); vec2 i = floor(v + dot(v, C.yy) ); vec2 x0 = v - i + dot(i, C.xx); vec2 i1; i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0); vec4 x12 = x0.xyxy + C.xxzz; x12.xy -= i1; i = mod289(i); vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 )); vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0); m = m*m; m = m*m; vec3 x = 2.0 * fract(p * C.www) - 1.0; vec3 h = abs(x) - 0.5; vec3 ox = floor(x + 0.5); vec3 a0 = x - ox; m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h ); vec3 g; g.x = a0.x * x0.x + h.x * x0.y; g.yz = a0.yz * x12.xz + h.yz * x12.yw; return 130.0 * dot(m, g); } void main() { float angle = atan(vUv.y - 0.5, vUv.x - 0.5); float radius = length(vUv - 0.5); vec2 motion = vec2(time * 0.1 / vRadius, time * 0.05); float noise = snoise((vUv + motion) * 5.0); float gradient = smoothstep(0.2, 0.7, vRadius); vec3 color = mix(color1, color2, gradient); color = mix(color, color3, smoothstep(0.6, 1.0, vRadius)); float alpha = (1.0 - smoothstep(0.48, 0.5, radius)) * 0.8 + 0.2; alpha *= pow(noise, 2.0) + 0.5; gl_FragColor = vec4(color, alpha); }`,
+      side: THREE.DoubleSide,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const accretionDisk = new THREE.Mesh(diskGeometry, diskMaterial);
+    accretionDisk.rotation.x = Math.PI / 2.2;
+    state.blackHoleGroup.add(accretionDisk);
+    const photonRing = new THREE.Mesh(
+      new THREE.TorusGeometry(8.5, 0.2, 64, 128),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    photonRing.rotation.copy(accretionDisk.rotation);
+    state.blackHoleGroup.add(photonRing);
+    const jetGeometry = new THREE.CylinderGeometry(0.5, 0.1, 200, 32, 1, true);
+    const jetMaterial = new THREE.ShaderMaterial({
+      uniforms: { time: { value: 0 } },
+      vertexShader: `uniform float time; varying vec2 vUv; void main() { vUv = uv; vec3 pos = position; float twist = sin(pos.y * 0.1 + time * 2.0) * 0.5; float angle = atan(pos.x, pos.z); pos.x += cos(angle) * twist; pos.z += sin(angle) * twist; gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0); }`,
+      fragmentShader: `varying vec2 vUv; uniform float time; void main() { float pulse = sin(vUv.y * 20.0 - time * 5.0) * 0.5 + 0.5; float falloff = pow(1.0 - vUv.y, 3.0); gl_FragColor = vec4(vec3(0.8, 0.9, 1.0) * pulse * falloff, falloff * 0.7); }`,
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const topJet = new THREE.Mesh(jetGeometry, jetMaterial);
+    topJet.position.y = 100;
+    const bottomJet = new THREE.Mesh(jetGeometry, jetMaterial);
+    bottomJet.position.y = -100;
+    bottomJet.rotation.x = Math.PI;
+    state.blackHoleGroup.add(topJet, bottomJet);
     state.plane = new THREE.Mesh(
-      new THREE.PlaneGeometry(200, 200),
+      new THREE.PlaneGeometry(500, 500),
       new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
     );
     state.plane.rotation.x = -Math.PI / 2;
     state.scene.add(state.plane);
-
     const clock = new THREE.Clock();
     const animate = () => {
       requestAnimationFrame(animate);
       const delta = clock.getDelta();
       const time = clock.getElapsedTime();
-
       state.controls?.update();
-
-      stationGroup.rotation.y += delta * 0.05;
-      stationGroup.children.forEach((child) => {
-        if (
-          child instanceof THREE.Mesh &&
-          child.material instanceof THREE.ShaderMaterial
-        ) {
-          child.material.uniforms.time.value = time;
-        }
-      });
-
+      if (state.blackHoleGroup) {
+        state.blackHoleGroup.rotation.y += delta * 0.05;
+        state.blackHoleGroup.children.forEach((child) => {
+          if (
+            child instanceof THREE.Mesh &&
+            child.material instanceof THREE.ShaderMaterial
+          ) {
+            child.material.uniforms.time.value = time;
+          }
+        });
+      }
+      if (state.scene) {
+        state.scene.children.forEach((child) => {
+          if (
+            child instanceof THREE.Points &&
+            child.material instanceof THREE.ShaderMaterial
+          ) {
+            child.material.uniforms.time.value = time;
+          }
+          if (
+            child === state.volumetricNebula &&
+            child.material instanceof THREE.ShaderMaterial
+          ) {
+            child.material.uniforms.time.value = time;
+            child.material.uniforms.cameraPos.value = state.camera!.position;
+          }
+        });
+      }
       if (state.camera && containerRef.current) {
         const width = containerRef.current.offsetWidth;
         const height = containerRef.current.offsetHeight;
@@ -361,7 +369,6 @@ export default function SpaceStation({
       state.composer?.render();
     };
     animate();
-
     const handleResize = () => {
       if (
         !containerRef.current ||
@@ -385,13 +392,10 @@ export default function SpaceStation({
     };
   }, []);
 
-  // --- ユーザーの追加/削除/更新 ---
   useEffect(() => {
     const state = threeJsState.current;
-    // 修正: NaNエラー防止のため、コンテナサイズが0の場合は処理を中断
     if (!state.scene || containerSize.width === 0 || containerSize.height === 0)
       return;
-
     const existingUserIds = new Set(users.map((u) => u.id));
     Object.keys(state.avatarMeshes).forEach((userId) => {
       if (!existingUserIds.has(userId)) {
@@ -401,7 +405,6 @@ export default function SpaceStation({
         delete state.avatarElements[userId];
       }
     });
-
     users.forEach((user) => {
       let group = state.avatarMeshes[user.id];
       if (!group) {
@@ -410,7 +413,6 @@ export default function SpaceStation({
         state.scene!.add(group);
         state.avatarMeshes[user.id] = group;
       }
-
       let { x, y } = user.position || { x: 0, y: 0 };
       if (
         typeof x !== "number" ||
@@ -421,40 +423,36 @@ export default function SpaceStation({
         x = 0;
         y = 0;
       }
-
+      const planeSize = 500;
       if (x === 0 && y === 0) {
         const angle = Math.random() * Math.PI * 2;
-        const radius = 40 + Math.random() * 40; // 可動域を広げる
-        x = ((Math.cos(angle) * radius) / 200 + 0.5) * containerSize.width;
-        y = ((Math.sin(angle) * radius) / 200 + 0.5) * containerSize.height;
+        const radius = 60 + Math.random() * 80;
+        x =
+          ((Math.cos(angle) * radius) / planeSize + 0.5) * containerSize.width;
+        y =
+          ((Math.sin(angle) * radius) / planeSize + 0.5) * containerSize.height;
       }
-
-      // 修正: PlaneGeometryのサイズ(200x200)に合わせて係数を修正
-      const worldX = (x / containerSize.width - 0.5) * 200;
-      const worldZ = (y / containerSize.height - 0.5) * 200;
+      const worldX = (x / containerSize.width - 0.5) * planeSize;
+      const worldZ = (y / containerSize.height - 0.5) * planeSize;
       group.position.set(worldX, 0, worldZ);
     });
   }, [users, containerSize]);
 
-  // --- マウスイベントハンドラー ---
   const handleMouseDown = useCallback((event: React.MouseEvent) => {
     if ((event.target as HTMLElement).closest(".spaceship-anim-container"))
       return;
     setIsOrbitingCamera(true);
     threeJsState.current.controls?.onMouseDown(event.nativeEvent);
   }, []);
-
   const handleMouseMove = useCallback(
     (event: React.MouseEvent) => {
       const state = threeJsState.current;
       if (!containerRef.current || !state.camera || !state.plane) return;
-
       const rect = containerRef.current.getBoundingClientRect();
       const mouse = new THREE.Vector2(
         ((event.clientX - rect.left) / rect.width) * 2 - 1,
         -((event.clientY - rect.top) / rect.height) * 2 + 1
       );
-
       if (draggedUserId) {
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(mouse, state.camera);
@@ -465,9 +463,9 @@ export default function SpaceStation({
           if (avatarGroup) {
             avatarGroup.position.x = point.x;
             avatarGroup.position.z = point.z;
-            // 修正: ワールド座標からピクセル座標への変換式を統一
-            const x = (point.x / 200 + 0.5) * containerSize.width;
-            const y = (point.z / 200 + 0.5) * containerSize.height;
+            const planeSize = 500;
+            const x = (point.x / planeSize + 0.5) * containerSize.width;
+            const y = (point.z / planeSize + 0.5) * containerSize.height;
             throttledSendPosition(draggedUserId, { x, y });
           }
         }
@@ -477,7 +475,6 @@ export default function SpaceStation({
     },
     [containerSize, throttledSendPosition, draggedUserId, isOrbitingCamera]
   );
-
   const handleMouseUp = useCallback(() => {
     if (isOrbitingCamera) {
       setIsOrbitingCamera(false);
@@ -487,7 +484,6 @@ export default function SpaceStation({
       setDraggedUserId(null);
     }
   }, [isOrbitingCamera, draggedUserId]);
-
   const handleAvatarMouseDown = useCallback(
     (event: React.MouseEvent, userId: string) => {
       event.stopPropagation();
@@ -497,11 +493,9 @@ export default function SpaceStation({
     },
     [currentUser]
   );
-
   const handleWheel = useCallback((event: React.WheelEvent) => {
     threeJsState.current.controls?.onMouseWheel(event.nativeEvent);
   }, []);
-
   const cursor = useMemo(() => {
     if (draggedUserId || isOrbitingCamera) return "grabbing";
     return "grab";
@@ -510,7 +504,7 @@ export default function SpaceStation({
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full overflow-hidden bg-black select-none"
+      className="relative w-full h-full overflow-hidden bg-gradient-to-b from-gray-900 via-indigo-950 to-black select-none"
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -519,32 +513,6 @@ export default function SpaceStation({
       style={{ cursor }}
     >
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
-
-      {/* UIオーバーレイとタイトル - 日本語で自然なデザイン */}
-      <div className="absolute top-6 left-0 right-0 text-center z-10 pointer-events-none">
-        <h2
-          className="text-4xl font-bold"
-          style={{
-            color: "#f0f0f0",
-            textShadow: "0 0 15px rgba(120, 155, 240, 0.8)",
-            fontFamily:
-              '"Hiragino Kaku Gothic Pro", "Yu Gothic", Meiryo, sans-serif',
-          }}
-        >
-          リアルタイムチャット
-        </h2>
-        <p
-          className="text-sm mt-2 opacity-80"
-          style={{
-            color: "#a0d8ff",
-            fontFamily:
-              '"Hiragino Kaku Gothic Pro", "Yu Gothic", Meiryo, sans-serif',
-          }}
-        >
-          ドラッグやスクロールで宇宙を探索してみてね
-        </p>
-      </div>
-
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
         {users.map((user) => (
           <SpaceshipAvatar

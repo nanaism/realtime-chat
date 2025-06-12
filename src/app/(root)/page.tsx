@@ -2,8 +2,8 @@ import WelcomeScreen from "@/app/(root)/_components/welcome-screen";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Sakana Office",
-  description: "オンライン上の作業スペースに参加しましょう🐟",
+  title: "Oga Office",
+  description: "オンライン上でチャットしよう！✨️",
 };
 
 export default function Home() {

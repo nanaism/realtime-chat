@@ -50,6 +50,29 @@ app.prepare().then(() => {
     socket.on("user:login", (userData) => {
       console.log("ログインデータ受信:", userData);
 
+      // ★★★ ここから修正 ★★★
+
+      // 1. 既に同じ名前のユーザーがいないかチェックする
+      const existingUser = Array.from(users.values()).find(
+        (u) => u.name === userData.name
+      );
+
+      if (existingUser) {
+        // --- オプション1: 古い接続を切断する（より親切）---
+        console.log(
+          `ユーザー "${userData.name}" が再接続しました。古い接続 (${existingUser.id}) を切断します。`
+        );
+        // 古いユーザーのソケットを見つけて切断
+        io.to(existingUser.id).disconnect();
+        // users Mapから古いユーザーを削除
+        users.delete(existingUser.id);
+
+        // --- オプション2: 新しいログインを拒否する（シンプル）---
+        // console.log(`ログイン拒否: ユーザー "${userData.name}" はすでに存在します。`);
+        // socket.emit('login:error', { message: 'この名前は既に使用されています。' });
+        // return; // 処理を中断
+      }
+
       const updatedUserData = {
         ...userData,
         id: socket.id,
