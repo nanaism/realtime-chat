@@ -5,11 +5,330 @@ import UserList from "@/app/chat/_components/user-list";
 import VirtualSpace from "@/app/chat/_components/virtual-space";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { motion } from "framer-motion";
 import { LogOut, MessageSquare, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react"; // useMemo をインポート
+import { useEffect, useMemo, useState } from "react";
 import { useChatSocket } from "./_hooks/use-chat-socket";
+
+// パーティクルのプロパティを定義する型 (追加)
+type Particle = {
+  id: number;
+  left: string;
+  top: string;
+  x: number;
+  duration: number;
+  delay: number;
+};
+
+// モダンなローディングコンポーネント
+const ModernLoading = () => {
+  // 螺旋を描くドットのデータ
+  const dots = Array.from({ length: 12 }, (_, i) => ({
+    id: i,
+    angle: (360 / 12) * i,
+    delay: i * 0.1,
+  }));
+
+  // 流体的なブロブのパス
+  const blobPaths = [
+    "M60,-60C80,-40,100,-20,100,0C100,20,80,40,60,60C40,80,20,100,0,100C-20,100,-40,80,-60,60C-80,40,-100,20,-100,0C-100,-20,-80,-40,-60,-60C-40,-80,-20,-100,0,-100C20,-100,40,-80,60,-60Z",
+    "M70,-70C85,-50,100,-25,100,0C100,25,85,50,70,70C50,85,25,100,0,100C-25,100,-50,85,-70,70C-85,50,-100,25,-100,0C-100,-25,-85,-50,-70,-70C-50,-85,-25,-100,0,-100C25,-100,50,-85,70,-70Z",
+    "M50,-80C70,-65,90,-40,95,-10C100,20,90,50,70,70C50,90,20,100,-10,95C-40,90,-65,70,-80,50C-95,30,-100,0,-95,-30C-90,-60,-70,-85,-45,-95C-20,-105,10,-105,35,-95C60,-85,30,-95,50,-80Z",
+  ];
+
+  // ★ 修正点: パーティクルのランダム値をstateで管理
+  const [particles, setParticles] = useState<Particle[]>([]);
+
+  // ★ 修正点: クライアントサイドでのみ実行されるuseEffectでランダム値を生成
+  useEffect(() => {
+    const generatedParticles = Array.from(
+      { length: 20 },
+      (_, i): Particle => ({
+        id: i,
+        left: `${Math.random() * 100}%`,
+        top: `${Math.random() * 100}%`,
+        x: Math.random() * 40 - 20,
+        duration: 3 + Math.random() * 2,
+        delay: Math.random() * 3,
+      })
+    );
+    setParticles(generatedParticles);
+  }, []); // 空の依存配列でマウント時に一度だけ実行
+
+  return (
+    <div className="fixed inset-0 bg-white flex items-center justify-center overflow-hidden z-50">
+      {/* 背景のグラデーションメッシュ */}
+      <div className="absolute inset-0">
+        <motion.div
+          className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-purple-200/30 to-transparent rounded-full filter blur-3xl"
+          animate={{
+            x: [0, 100, 0],
+            y: [0, -100, 0],
+          }}
+          transition={{
+            duration: 20,
+            repeat: Infinity,
+            ease: "linear",
+          }}
+        />
+        <motion.div
+          className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-tl from-blue-200/30 to-transparent rounded-full filter blur-3xl"
+          animate={{
+            x: [0, -100, 0],
+            y: [0, 100, 0],
+          }}
+          transition={{
+            duration: 25,
+            repeat: Infinity,
+            ease: "linear",
+          }}
+        />
+      </div>
+
+      {/* メインコンテナ */}
+      <div className="relative">
+        {/* 外側の回転リング */}
+        <motion.div
+          className="absolute inset-0 w-48 h-48 -left-24 -top-24"
+          animate={{ rotate: 360 }}
+          transition={{
+            duration: 8,
+            repeat: Infinity,
+            ease: "linear",
+          }}
+        >
+          {dots.map((dot) => (
+            <motion.div
+              key={dot.id}
+              className="absolute w-full h-full"
+              style={{
+                rotate: `${dot.angle}deg`,
+              }}
+            >
+              <motion.div
+                className="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-2"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{
+                  scale: [0, 1.5, 0],
+                  opacity: [0, 1, 0],
+                  y: [0, -20, -40],
+                }}
+                transition={{
+                  duration: 3,
+                  delay: dot.delay,
+                  repeat: Infinity,
+                  ease: "easeOut",
+                }}
+              >
+                <div className="w-full h-full bg-gradient-to-br from-purple-500 to-blue-500 rounded-full shadow-lg shadow-purple-500/50" />
+              </motion.div>
+            </motion.div>
+          ))}
+        </motion.div>
+
+        {/* 中心の流体シェイプ */}
+        <div className="relative w-48 h-48">
+          <svg viewBox="-120 -120 240 240" className="w-full h-full">
+            <defs>
+              <linearGradient
+                id="gradient1"
+                x1="0%"
+                y1="0%"
+                x2="100%"
+                y2="100%"
+              >
+                <motion.stop
+                  offset="0%"
+                  stopColor="#8B5CF6"
+                  animate={{
+                    stopColor: ["#8B5CF6", "#3B82F6", "#8B5CF6"],
+                  }}
+                  transition={{
+                    duration: 4,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
+                />
+                <motion.stop
+                  offset="100%"
+                  stopColor="#3B82F6"
+                  animate={{
+                    stopColor: ["#3B82F6", "#8B5CF6", "#3B82F6"],
+                  }}
+                  transition={{
+                    duration: 4,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
+                />
+              </linearGradient>
+              <filter id="glow">
+                <feGaussianBlur stdDeviation="4" result="coloredBlur" />
+                <feMerge>
+                  <feMergeNode in="coloredBlur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+
+            {/* モーフィングブロブ */}
+            <motion.path
+              d={blobPaths[0]}
+              fill="url(#gradient1)"
+              filter="url(#glow)"
+              animate={{
+                d: blobPaths,
+                rotate: [0, 360],
+              }}
+              transition={{
+                d: {
+                  duration: 6,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                },
+                rotate: {
+                  duration: 20,
+                  repeat: Infinity,
+                  ease: "linear",
+                },
+              }}
+            />
+
+            {/* 内側の軌道リング */}
+            <motion.circle
+              cx="0"
+              cy="0"
+              r="60"
+              fill="none"
+              stroke="url(#gradient1)"
+              strokeWidth="0.5"
+              strokeDasharray="5 10"
+              opacity="0.3"
+              animate={{
+                rotate: -360,
+                strokeDashoffset: [0, -15],
+              }}
+              transition={{
+                rotate: {
+                  duration: 30,
+                  repeat: Infinity,
+                  ease: "linear",
+                },
+                strokeDashoffset: {
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "linear",
+                },
+              }}
+            />
+          </svg>
+
+          {/* 中心のコア */}
+          <motion.div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8"
+            animate={{
+              scale: [1, 1.2, 1],
+            }}
+            transition={{
+              duration: 2,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+          >
+            <div className="w-full h-full bg-white rounded-full shadow-2xl shadow-purple-500/50" />
+            <motion.div
+              className="absolute inset-0 bg-gradient-to-br from-purple-400 to-blue-400 rounded-full"
+              animate={{
+                opacity: [0.3, 0.7, 0.3],
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
+            />
+          </motion.div>
+
+          {/* 周回する小さな球体 */}
+          {[0, 120, 240].map((angle, index) => (
+            <motion.div
+              key={angle}
+              className="absolute top-1/2 left-1/2 w-full h-full -translate-x-1/2 -translate-y-1/2"
+              animate={{
+                rotate: [angle, angle + 360],
+              }}
+              transition={{
+                duration: 3 + index,
+                repeat: Infinity,
+                ease: "linear",
+              }}
+            >
+              <motion.div
+                className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4"
+                animate={{
+                  scale: [0.8, 1.2, 0.8],
+                }}
+                transition={{
+                  duration: 2,
+                  delay: index * 0.3,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+              >
+                <div className="w-full h-full bg-gradient-to-br from-white to-purple-400 rounded-full shadow-lg shadow-purple-500/50" />
+              </motion.div>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* 放射状のパルス */}
+        <motion.div
+          className="absolute inset-0 -inset-8"
+          initial={{ opacity: 0 }}
+          animate={{
+            scale: [1, 2, 2.5],
+            opacity: [0, 0.5, 0],
+          }}
+          transition={{
+            duration: 3,
+            repeat: Infinity,
+            ease: "easeOut",
+          }}
+        >
+          <div className="w-full h-full border border-purple-300 rounded-full" />
+        </motion.div>
+      </div>
+
+      {/* 微細なパーティクル */}
+      {/* ★ 修正点: stateの値を使ってパーティクルを描画 */}
+      <div className="absolute inset-0 pointer-events-none">
+        {particles.map((p) => (
+          <motion.div
+            key={p.id}
+            className="absolute w-1 h-1 bg-gradient-to-br from-purple-400 to-blue-400 rounded-full"
+            style={{
+              left: p.left,
+              top: p.top,
+            }}
+            animate={{
+              y: [-20, 20],
+              x: [0, p.x],
+              opacity: [0, 1, 0],
+            }}
+            transition={{
+              duration: p.duration,
+              delay: p.delay,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
 
 export default function ChatPage() {
   const router = useRouter();
@@ -38,7 +357,6 @@ export default function ChatPage() {
     logout,
   } = useChatSocket({ username });
 
-  // 修正: ユーザー名から現在のユーザーのIDを見つけ出す
   const currentUserId = useMemo(() => {
     return users.find((user) => user.name === username)?.id || null;
   }, [users, username]);
@@ -81,11 +399,7 @@ export default function ChatPage() {
   };
 
   if (!username || !isSocketInitialized) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        Loading...
-      </div>
-    );
+    return <ModernLoading />;
   }
 
   return (
@@ -106,7 +420,6 @@ export default function ChatPage() {
         <div className="hidden md:block md:w-1/2 lg:w-4/5 border-r dark:border-slate-800">
           <VirtualSpace
             users={users}
-            // 修正: 文字列型のユーザーIDが必要なので、nullの場合は空文字列を渡す
             currentUser={currentUserId || ""}
             onUserMove={handleUserMove}
             typingUsers={typingUsers}
@@ -121,7 +434,7 @@ export default function ChatPage() {
                   <ChatInterface
                     messages={messages}
                     typingUsers={typingUsers}
-                    currentUser={username} // ChatUIにはユーザー名を渡す
+                    currentUser={username}
                     inputValue={inputValue}
                     setInputValue={handleInputChange}
                     onSendMessage={handleSendMessage}
