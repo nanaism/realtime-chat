@@ -94,7 +94,7 @@ export default function ChatPage() {
         <div className="flex items-center gap-2">
           <span className="text-2xl">✨️✨️</span>
           <h1 className="text-xl font-semibold">
-            <Link href="/">Oga Office</Link>
+            <Link href="/">Oga Space</Link>
           </h1>
         </div>
         <div className="text-sm text-zinc-500 dark:text-zinc-400">

@@ -203,7 +203,7 @@ export default function WelcomeScreen() {
 
   useEffect(() => {
     // GSAP パーティクルアニメーション
-    const particles = Array.from({ length: 20 }).map((_, i) => {
+    const particles = Array.from({ length: 20 }).map(() => {
       const particle = document.createElement("div");
       particle.className = "particle";
       particle.style.cssText = `
@@ -344,7 +344,7 @@ export default function WelcomeScreen() {
             </motion.div>
 
             <CardTitle className="text-3xl font-bold text-center bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              Oga Office へようこそ！
+              Oga Space へようこそ！
             </CardTitle>
             <CardDescription className="text-center text-lg">
               <motion.span

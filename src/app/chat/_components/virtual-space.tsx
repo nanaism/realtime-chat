@@ -116,6 +116,7 @@ export default function SpaceStation({
     avatarElements: { [key: string]: HTMLDivElement | null };
     blackHoleGroup: THREE.Group | null;
     volumetricNebula: THREE.Mesh | null;
+    stars: THREE.Points | null; // ★ 星屑オブジェクトへの参照を追加
   }>({
     scene: null,
     camera: null,
@@ -127,6 +128,7 @@ export default function SpaceStation({
     avatarElements: {},
     blackHoleGroup: null,
     volumetricNebula: null,
+    stars: null, // ★ 初期化
   });
 
   const [draggedUserId, setDraggedUserId] = useState<string | null>(null);
@@ -139,6 +141,7 @@ export default function SpaceStation({
     }, 50)
   ).current;
 
+  // --- Three.js初期化 ---
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
     const state = threeJsState.current;
@@ -172,6 +175,7 @@ export default function SpaceStation({
     state.composer.addPass(renderPass);
     state.composer.addPass(bloomPass);
     state.scene.add(new THREE.HemisphereLight(0x6080ff, 0x302040, 0.6));
+
     const starCount = 25000;
     const starVertices = [];
     const starColors = [];
@@ -204,17 +208,14 @@ export default function SpaceStation({
       "size",
       new THREE.Float32BufferAttribute(starSizes, 1)
     );
-
-    // ★★★ ここが修正点 ★★★
     const starsMaterial = new THREE.ShaderMaterial({
       uniforms: { time: { value: 0 } },
       vertexShader: `
             attribute float size;
-            // attribute vec3 color; <--- この行を削除！ Three.jsが自動で追加してくれます。
             varying vec3 vColor;
             varying float vSize;
             void main() {
-                vColor = color; // この'color'はThree.jsが提供してくれるattributeを指します
+                vColor = color;
                 vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
                 gl_PointSize = size * (200.0 / -mvPosition.z);
                 gl_Position = projectionMatrix * mvPosition;
@@ -235,11 +236,10 @@ export default function SpaceStation({
       transparent: true,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
-      vertexColors: true, // この設定が重要
+      vertexColors: true,
     });
-    // ★★★ 修正ここまで ★★★
-
     const stars = new THREE.Points(starsGeometry, starsMaterial);
+    state.stars = stars; // ★ 参照を保存
     state.scene.add(stars);
 
     const nebulaGeometry = new THREE.SphereGeometry(1500, 64, 64);
@@ -313,12 +313,14 @@ export default function SpaceStation({
     );
     state.plane.rotation.x = -Math.PI / 2;
     state.scene.add(state.plane);
+
     const clock = new THREE.Clock();
     const animate = () => {
       requestAnimationFrame(animate);
       const delta = clock.getDelta();
       const time = clock.getElapsedTime();
       state.controls?.update();
+
       if (state.blackHoleGroup) {
         state.blackHoleGroup.rotation.y += delta * 0.05;
         state.blackHoleGroup.children.forEach((child) => {
@@ -330,23 +332,28 @@ export default function SpaceStation({
           }
         });
       }
-      if (state.scene) {
-        state.scene.children.forEach((child) => {
-          if (
-            child instanceof THREE.Points &&
-            child.material instanceof THREE.ShaderMaterial
-          ) {
-            child.material.uniforms.time.value = time;
-          }
-          if (
-            child === state.volumetricNebula &&
-            child.material instanceof THREE.ShaderMaterial
-          ) {
-            child.material.uniforms.time.value = time;
-            child.material.uniforms.cameraPos.value = state.camera!.position;
-          }
-        });
+
+      // ★★★ ここからアニメーションループの修正 ★★★
+      // 非効率なforEachをやめ、直接参照する
+
+      // 星屑のアニメーション
+      if (state.stars && state.stars.material instanceof THREE.ShaderMaterial) {
+        state.stars.material.uniforms.time.value = time;
       }
+
+      // 3D星雲のアニメーション
+      if (
+        state.volumetricNebula &&
+        state.volumetricNebula.material instanceof THREE.ShaderMaterial &&
+        state.camera
+      ) {
+        state.volumetricNebula.material.uniforms.time.value = time;
+        state.volumetricNebula.material.uniforms.cameraPos.value.copy(
+          state.camera.position
+        );
+      }
+      // ★★★ 修正ここまで ★★★
+
       if (state.camera && containerRef.current) {
         const width = containerRef.current.offsetWidth;
         const height = containerRef.current.offsetHeight;
@@ -392,6 +399,7 @@ export default function SpaceStation({
     };
   }, []);
 
+  // --- ユーザーの追加/削除/更新 (変更なし) ---
   useEffect(() => {
     const state = threeJsState.current;
     if (!state.scene || containerSize.width === 0 || containerSize.height === 0)
@@ -438,6 +446,7 @@ export default function SpaceStation({
     });
   }, [users, containerSize]);
 
+  // --- マウスイベントハンドラー (変更なし) ---
   const handleMouseDown = useCallback((event: React.MouseEvent) => {
     if ((event.target as HTMLElement).closest(".spaceship-anim-container"))
       return;

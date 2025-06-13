@@ -2,7 +2,7 @@ import WelcomeScreen from "@/app/(root)/_components/welcome-screen";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Oga Office",
+  title: "Oga Space",
   description: "オンライン上でチャットしよう！✨️",
 };
 
