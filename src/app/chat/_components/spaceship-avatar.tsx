@@ -272,7 +272,8 @@ export default React.forwardRef<HTMLDivElement, SpaceshipAvatarProps>(
 
         <style jsx>{`
           .spaceship-anim-container {
-            animation-name: float-space;
+            /* 物理シミュレーションと競合するため、上下に揺れるアニメーションは無効化 */
+            /* animation-name: float-space; */
             animation-duration: 8s;
             animation-timing-function: ease-in-out;
             animation-iteration-count: infinite;

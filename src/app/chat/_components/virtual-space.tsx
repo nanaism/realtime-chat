@@ -27,7 +27,25 @@ interface SpaceStationProps {
   onUserMove: (userId: string, newPosition: { x: number; y: number }) => void;
 }
 
-// --- カメラコントローラークラス (変更なし) ---
+// --- 物理定数 ---
+const G = 50; // 重力定数（シミュレーションのスケール調整用）
+const BLACK_HOLE_MASS = 50; // ブラックホールの質量
+const SPACESHIP_MASS = 1.0; // 宇宙船の質量
+const INTER_AVATAR_GRAVITY_SCALE = 1; // アバター間の重力の影響度
+
+// --- ビジュアル定数 ---
+const EVENT_HORIZON_RADIUS = 7.5; // 事象の地平面の半径
+const PHOTON_SPHERE_RADIUS = 8.0; // 光子球の半径
+const ACCRETION_DISK_INNER_RADIUS = 8.5; // 降着円盤の内径
+const ACCRETION_DISK_OUTER_RADIUS = 35; // 降着円盤の外径（外側のリングの端）
+const JET_BASE_RADIUS = 1.0; // ジェットの根元の半径
+
+const RESPAWN_RADIUS_MIN = 150; // リスポーンする最小半径
+const RESPAWN_RADIUS_MAX = 220; // リスポーンする最大半径
+const ORBIT_SPEED_SCALE = 0.7; // 公転速度の初期値にかける係数
+const DAMPING = 0.99995; // 速度の減衰係数（1に近いほどゆっくり吸い込まれる）
+
+// --- カメラコントローラークラス ---
 class CameraController {
   camera: THREE.PerspectiveCamera;
   domElement: HTMLElement;
@@ -59,7 +77,7 @@ class CameraController {
       Math.min(Math.PI - 0.1, this.spherical.phi)
     );
     this.spherical.radius *= this.scale;
-    this.spherical.radius = Math.max(30, Math.min(200, this.spherical.radius));
+    this.spherical.radius = Math.max(50, Math.min(300, this.spherical.radius));
     offset.setFromSpherical(this.spherical);
     this.camera.position.copy(this.target).add(offset);
     this.camera.lookAt(this.target);
@@ -114,9 +132,14 @@ export default function SpaceStation({
     plane: THREE.Mesh | null;
     avatarMeshes: { [key: string]: THREE.Group };
     avatarElements: { [key: string]: HTMLDivElement | null };
+    physicsState: {
+      [key: string]: {
+        velocity: THREE.Vector3;
+      };
+    };
     blackHoleGroup: THREE.Group | null;
     volumetricNebula: THREE.Mesh | null;
-    stars: THREE.Points | null; // ★ 星屑オブジェクトへの参照を追加
+    stars: THREE.Points | null;
   }>({
     scene: null,
     camera: null,
@@ -126,9 +149,10 @@ export default function SpaceStation({
     plane: null,
     avatarMeshes: {},
     avatarElements: {},
+    physicsState: {},
     blackHoleGroup: null,
     volumetricNebula: null,
-    stars: null, // ★ 初期化
+    stars: null,
   });
 
   const [draggedUserId, setDraggedUserId] = useState<string | null>(null);
@@ -150,7 +174,7 @@ export default function SpaceStation({
     state.scene = new THREE.Scene();
     state.scene.fog = new THREE.FogExp2(0x00000a, 0.006);
     state.camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 5000);
-    state.camera.position.set(0, 40, 90);
+    state.camera.position.set(0, 50, 100);
     state.renderer = new THREE.WebGLRenderer({
       canvas: canvasRef.current,
       antialias: true,
@@ -167,9 +191,9 @@ export default function SpaceStation({
     const renderPass = new RenderPass(state.scene, state.camera);
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(width, height),
-      0.7,
-      0.5,
-      0.2
+      0.8,
+      0.6,
+      0.1
     );
     state.composer = new EffectComposer(state.renderer);
     state.composer.addPass(renderPass);
@@ -239,7 +263,7 @@ export default function SpaceStation({
       vertexColors: true,
     });
     const stars = new THREE.Points(starsGeometry, starsMaterial);
-    state.stars = stars; // ★ 参照を保存
+    state.stars = stars;
     state.scene.add(stars);
 
     const nebulaGeometry = new THREE.SphereGeometry(1500, 64, 64);
@@ -260,53 +284,218 @@ export default function SpaceStation({
     state.volumetricNebula = new THREE.Mesh(nebulaGeometry, nebulaMaterial);
     state.scene.add(state.volumetricNebula);
 
+    // ==================================================================
+    // ★★★★★ ここからブラックホールのビジュアルを刷新 ★★★★★
+    // ==================================================================
     state.blackHoleGroup = new THREE.Group();
     state.scene.add(state.blackHoleGroup);
+
+    // 1. 事象の地平面 (黒い球)
     const eventHorizon = new THREE.Mesh(
-      new THREE.SphereGeometry(8, 64, 64),
+      new THREE.SphereGeometry(EVENT_HORIZON_RADIUS, 64, 64),
       new THREE.MeshBasicMaterial({ color: 0x000000 })
     );
     state.blackHoleGroup.add(eventHorizon);
-    const diskGeometry = new THREE.RingGeometry(9, 25, 128, 8);
+
+    // 2. 降着円盤 (Accretion Disk) - 2層構造に
+    const diskGeometry = new THREE.RingGeometry(
+      ACCRETION_DISK_INNER_RADIUS,
+      ACCRETION_DISK_OUTER_RADIUS,
+      256,
+      8
+    );
     const diskMaterial = new THREE.ShaderMaterial({
       uniforms: {
         time: { value: 0 },
-        color1: { value: new THREE.Color(0xfbbf24) },
-        color2: { value: new THREE.Color(0xf472b6) },
-        color3: { value: new THREE.Color(0x60a5fa) },
+        // 3段階の色を設定 (内側 -> 中間 -> 外側)
+        innerColor: { value: new THREE.Color(0xfff8e7) }, // 高温の白黄色
+        midColor: { value: new THREE.Color(0xffb800) }, // 鮮やかなオレンジ
+        outerColor: { value: new THREE.Color(0xe55b00) }, // 低温の赤みがかったオレンジ
+        dopplerBlue: { value: new THREE.Color(0.8, 0.9, 1.5) },
+        dopplerRed: { value: new THREE.Color(1.5, 0.9, 0.8) },
       },
-      vertexShader: `varying vec2 vUv; varying float vRadius; void main() { vUv = uv; vec3 pos = position; vRadius = length(pos.xy); gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0); }`,
-      fragmentShader: `uniform float time; uniform vec3 color1; uniform vec3 color2; uniform vec3 color3; varying vec2 vUv; varying float vRadius; vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; } vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; } vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); } float snoise(vec2 v) { const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439); vec2 i = floor(v + dot(v, C.yy) ); vec2 x0 = v - i + dot(i, C.xx); vec2 i1; i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0); vec4 x12 = x0.xyxy + C.xxzz; x12.xy -= i1; i = mod289(i); vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 )); vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0); m = m*m; m = m*m; vec3 x = 2.0 * fract(p * C.www) - 1.0; vec3 h = abs(x) - 0.5; vec3 ox = floor(x + 0.5); vec3 a0 = x - ox; m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h ); vec3 g; g.x = a0.x * x0.x + h.x * x0.y; g.yz = a0.yz * x12.xz + h.yz * x12.yw; return 130.0 * dot(m, g); } void main() { float angle = atan(vUv.y - 0.5, vUv.x - 0.5); float radius = length(vUv - 0.5); vec2 motion = vec2(time * 0.1 / vRadius, time * 0.05); float noise = snoise((vUv + motion) * 5.0); float gradient = smoothstep(0.2, 0.7, vRadius); vec3 color = mix(color1, color2, gradient); color = mix(color, color3, smoothstep(0.6, 1.0, vRadius)); float alpha = (1.0 - smoothstep(0.48, 0.5, radius)) * 0.8 + 0.2; alpha *= pow(noise, 2.0) + 0.5; gl_FragColor = vec4(color, alpha); }`,
+      vertexShader: `
+        varying vec2 vUv;
+        varying float vRadius;
+        varying vec3 vWorldPosition;
+        void main() {
+          vUv = uv;
+          vec3 pos = position;
+          vRadius = length(pos.xy);
+          
+          // 持ち上げ効果を弱め、より自然な円形に
+          float z_world = (modelMatrix * vec4(pos, 1.0)).z;
+          float bendFactor = pow(max(0.0, z_world / ${ACCRETION_DISK_OUTER_RADIUS.toFixed(
+            1
+          )}), 2.0) * 3.0;
+          pos.y += bendFactor;
+          
+          vec4 worldPosition = modelMatrix * vec4(pos, 1.0);
+          vWorldPosition = worldPosition.xyz;
+          gl_Position = projectionMatrix * viewMatrix * worldPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform float time;
+        uniform vec3 innerColor;
+        uniform vec3 midColor;
+        uniform vec3 outerColor;
+        uniform vec3 dopplerBlue;
+        uniform vec3 dopplerRed;
+        varying vec2 vUv;
+        varying float vRadius;
+        varying vec3 vWorldPosition;
+
+        // 2D Simplex Noise
+        vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+        vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+        vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+        float snoise(vec2 v) {
+          const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+          vec2 i  = floor(v + dot(v, C.yy) ); vec2 x0 = v - i + dot(i, C.xx);
+          vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+          vec4 x12 = x0.xyxy + C.xxzz; x12.xy -= i1; i = mod289(i);
+          vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+          vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+          m = m*m; m = m*m;
+          vec3 x = 2.0 * fract(p * C.www) - 1.0; vec3 h = abs(x) - 0.5; vec3 ox = floor(x + 0.5); vec3 a0 = x - ox;
+          m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+          vec3 g; g.x  = a0.x  * x0.x + h.x  * x0.y; g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+          return 130.0 * dot(m, g);
+        }
+
+        // FBM (Fractal Brownian Motion) for complex patterns
+        float fbm(vec2 p) {
+            float value = 0.0; float amplitude = 0.5;
+            for (int i = 0; i < 5; i++) { value += amplitude * snoise(p); p *= 2.0; amplitude *= 0.5; }
+            return value;
+        }
+
+        void main() {
+          float normalizedRadius = (vRadius - ${ACCRETION_DISK_INNER_RADIUS.toFixed(
+            1
+          )}) / (${(
+        ACCRETION_DISK_OUTER_RADIUS - ACCRETION_DISK_INNER_RADIUS
+      ).toFixed(1)});
+          
+          // --- 層の定義 ---
+          float gap_start = 0.45;
+          float gap_end = 0.5;
+          float gap_width = 0.02;
+
+          // 隙間部分のアルファを0にするマスク
+          float gap_mask = 1.0 - smoothstep(gap_start - gap_width, gap_start, normalizedRadius) * (1.0 - smoothstep(gap_end, gap_end + gap_width, normalizedRadius));
+
+          vec3 baseColor;
+          float speed;
+          float noise_scale;
+
+          if (normalizedRadius < gap_start) {
+            // 内側リング
+            float innerNormalizedRadius = normalizedRadius / gap_start;
+            baseColor = mix(innerColor, midColor, innerNormalizedRadius);
+            speed = 0.4 / (innerNormalizedRadius + 0.1); // 速い回転
+            noise_scale = 4.0;
+          } else {
+            // 外側リング
+            float outerNormalizedRadius = (normalizedRadius - gap_end) / (1.0 - gap_end);
+            baseColor = mix(midColor, outerColor, outerNormalizedRadius);
+            speed = 0.15 / (outerNormalizedRadius + 0.2); // 遅い回転
+            noise_scale = 6.0;
+          }
+          
+          float angle = atan(vUv.y * 2.0 - 1.0, vUv.x * 2.0 - 1.0);
+          float timeOffset = time * speed;
+          
+          vec2 noiseCoord = vec2(angle * 3.0, normalizedRadius * noise_scale - timeOffset);
+          float noise = fbm(noiseCoord);
+          noise = pow(noise, 3.0);
+
+          vec3 finalColor = baseColor;
+          
+          float doppler = smoothstep(-${ACCRETION_DISK_OUTER_RADIUS.toFixed(
+            1
+          )}, ${ACCRETION_DISK_OUTER_RADIUS.toFixed(1)}, vWorldPosition.x);
+          vec3 dopplerColor = mix(dopplerBlue, dopplerRed, doppler);
+          finalColor *= dopplerColor;
+
+          finalColor *= 1.0 + noise * 3.0;
+
+          float edgeFade = smoothstep(0.0, 0.05, normalizedRadius) * smoothstep(1.0, 0.9, normalizedRadius);
+          
+          gl_FragColor = vec4(finalColor, edgeFade * gap_mask);
+        }
+      `,
       side: THREE.DoubleSide,
       transparent: true,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
     const accretionDisk = new THREE.Mesh(diskGeometry, diskMaterial);
-    accretionDisk.rotation.x = Math.PI / 2.2;
+    accretionDisk.rotation.x = Math.PI / 2.0;
     state.blackHoleGroup.add(accretionDisk);
+
+    // 3. 光子リング (Photon Sphere)
     const photonRing = new THREE.Mesh(
-      new THREE.TorusGeometry(8.5, 0.2, 64, 128),
-      new THREE.MeshBasicMaterial({ color: 0xffffff })
+      new THREE.TorusGeometry(PHOTON_SPHERE_RADIUS, 0.15, 32, 128),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        blending: THREE.AdditiveBlending,
+      })
     );
     photonRing.rotation.copy(accretionDisk.rotation);
     state.blackHoleGroup.add(photonRing);
-    const jetGeometry = new THREE.CylinderGeometry(0.5, 0.1, 200, 32, 1, true);
+
+    // 4. ジェット (Jet) - 点滅を穏やかに
+    // ジェットのジオメトリを作成 - より精細な分割でスムーズに
+    const jetGeometry = new THREE.CylinderGeometry(
+      JET_BASE_RADIUS,
+      0.1, // 先端を細く
+      300, // 長さ
+      32, // 円周方向の分割数
+      64, // 高さ方向の分割数を増やしてよりスムーズに
+      true // オープンエンド
+    );
     const jetMaterial = new THREE.ShaderMaterial({
       uniforms: { time: { value: 0 } },
-      vertexShader: `uniform float time; varying vec2 vUv; void main() { vUv = uv; vec3 pos = position; float twist = sin(pos.y * 0.1 + time * 2.0) * 0.5; float angle = atan(pos.x, pos.z); pos.x += cos(angle) * twist; pos.z += sin(angle) * twist; gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0); }`,
-      fragmentShader: `varying vec2 vUv; uniform float time; void main() { float pulse = sin(vUv.y * 20.0 - time * 5.0) * 0.5 + 0.5; float falloff = pow(1.0 - vUv.y, 3.0); gl_FragColor = vec4(vec3(0.8, 0.9, 1.0) * pulse * falloff, falloff * 0.7); }`,
+      vertexShader: `
+        uniform float time; 
+        varying vec2 vUv; 
+        void main() { 
+          vUv = uv; 
+          vec3 pos = position; 
+          float twist = sin(pos.y * 0.05 + time * 3.0) * (1.0 - uv.y) * 2.0;
+          float angle = atan(pos.x, pos.z);
+          pos.x += cos(angle) * twist; 
+          pos.z += sin(angle) * twist; 
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0); 
+        }
+      `,
+      fragmentShader: `
+        varying vec2 vUv; 
+        uniform float time; 
+        void main() { 
+          float pulse = sin(vUv.y * 25.0 - time * 2.5) * 0.5 + 0.5;
+          float baseGlow = pow(1.0 - vUv.y, 2.0);
+          float intensity = baseGlow * (pulse * 0.7 + 0.3) * 1.5;
+          gl_FragColor = vec4(vec3(0.7, 0.85, 1.0) * intensity, baseGlow * 0.8);
+        }
+      `,
       transparent: true,
       side: THREE.DoubleSide,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
     const topJet = new THREE.Mesh(jetGeometry, jetMaterial);
-    topJet.position.y = 100;
-    const bottomJet = new THREE.Mesh(jetGeometry, jetMaterial);
-    bottomJet.position.y = -100;
+    topJet.position.y = 150;
+    const bottomJet = topJet.clone();
+    bottomJet.position.y = -150;
     bottomJet.rotation.x = Math.PI;
     state.blackHoleGroup.add(topJet, bottomJet);
+    // ==================================================================
+    // ★★★★★ ブラックホールビジュアルの刷新ここまで ★★★★★
+    // ==================================================================
+
     state.plane = new THREE.Mesh(
       new THREE.PlaneGeometry(500, 500),
       new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
@@ -317,12 +506,12 @@ export default function SpaceStation({
     const clock = new THREE.Clock();
     const animate = () => {
       requestAnimationFrame(animate);
-      const delta = clock.getDelta();
+      const delta = Math.min(clock.getDelta(), 0.05);
       const time = clock.getElapsedTime();
       state.controls?.update();
 
       if (state.blackHoleGroup) {
-        state.blackHoleGroup.rotation.y += delta * 0.05;
+        state.blackHoleGroup.rotation.y += delta * 0.02;
         state.blackHoleGroup.children.forEach((child) => {
           if (
             child instanceof THREE.Mesh &&
@@ -333,15 +522,10 @@ export default function SpaceStation({
         });
       }
 
-      // ★★★ ここからアニメーションループの修正 ★★★
-      // 非効率なforEachをやめ、直接参照する
-
-      // 星屑のアニメーション
       if (state.stars && state.stars.material instanceof THREE.ShaderMaterial) {
         state.stars.material.uniforms.time.value = time;
       }
 
-      // 3D星雲のアニメーション
       if (
         state.volumetricNebula &&
         state.volumetricNebula.material instanceof THREE.ShaderMaterial &&
@@ -352,8 +536,74 @@ export default function SpaceStation({
           state.camera.position
         );
       }
-      // ★★★ 修正ここまで ★★★
 
+      // 物理シミュレーション
+      if (
+        state.scene &&
+        state.avatarMeshes &&
+        Object.keys(state.avatarMeshes).length > 0
+      ) {
+        const userIds = Object.keys(state.avatarMeshes);
+        const accelerations: { [key: string]: THREE.Vector3 } = {};
+        userIds.forEach((id1) => {
+          if (id1 === draggedUserId) return;
+          accelerations[id1] = new THREE.Vector3();
+          const mesh1 = state.avatarMeshes[id1];
+          const pos1 = mesh1.position;
+          const distToCenterSq = pos1.lengthSq();
+          if (distToCenterSq > 0.1) {
+            const forceMag =
+              (G * BLACK_HOLE_MASS * SPACESHIP_MASS) / distToCenterSq;
+            const forceDir = pos1.clone().normalize().multiplyScalar(-forceMag);
+            accelerations[id1].add(forceDir);
+          }
+          userIds.forEach((id2) => {
+            if (id1 === id2) return;
+            const mesh2 = state.avatarMeshes[id2];
+            const pos2 = mesh2.position;
+            const distVec = new THREE.Vector3().subVectors(pos2, pos1);
+            const distSq = distVec.lengthSq();
+            if (distSq > 25) {
+              const forceMag =
+                (G *
+                  SPACESHIP_MASS *
+                  SPACESHIP_MASS *
+                  INTER_AVATAR_GRAVITY_SCALE) /
+                distSq;
+              distVec.normalize().multiplyScalar(forceMag);
+              accelerations[id1].add(distVec);
+            }
+          });
+        });
+        userIds.forEach((id) => {
+          if (id === draggedUserId) return;
+          const mesh = state.avatarMeshes[id];
+          const physics = state.physicsState[id];
+          if (!physics) return;
+          physics.velocity.add(accelerations[id].multiplyScalar(delta));
+          physics.velocity.multiplyScalar(DAMPING);
+          mesh.position.add(physics.velocity.clone().multiplyScalar(delta));
+          if (mesh.position.length() < EVENT_HORIZON_RADIUS) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius =
+              RESPAWN_RADIUS_MIN +
+              Math.random() * (RESPAWN_RADIUS_MAX - RESPAWN_RADIUS_MIN);
+            const respawnX = Math.cos(angle) * radius;
+            const respawnZ = Math.sin(angle) * radius;
+            mesh.position.set(respawnX, 0, respawnZ);
+            const tangent = new THREE.Vector3(
+              -respawnZ,
+              0,
+              respawnX
+            ).normalize();
+            const speed =
+              Math.sqrt((G * BLACK_HOLE_MASS) / radius) * ORBIT_SPEED_SCALE;
+            physics.velocity.copy(tangent.multiplyScalar(speed));
+          }
+        });
+      }
+
+      // UI更新
       if (state.camera && containerRef.current) {
         const width = containerRef.current.offsetWidth;
         const height = containerRef.current.offsetHeight;
@@ -397,9 +647,9 @@ export default function SpaceStation({
     return () => {
       window.removeEventListener("resize", handleResize);
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- ユーザーの追加/削除/更新 (変更なし) ---
+  // --- ユーザーの追加/削除/更新 ---
   useEffect(() => {
     const state = threeJsState.current;
     if (!state.scene || containerSize.width === 0 || containerSize.height === 0)
@@ -411,6 +661,7 @@ export default function SpaceStation({
           state.scene!.remove(state.avatarMeshes[userId]);
         delete state.avatarMeshes[userId];
         delete state.avatarElements[userId];
+        delete state.physicsState[userId];
       }
     });
     users.forEach((user) => {
@@ -420,33 +671,45 @@ export default function SpaceStation({
         group.userData = { userId: user.id };
         state.scene!.add(group);
         state.avatarMeshes[user.id] = group;
+        state.physicsState[user.id] = {
+          velocity: new THREE.Vector3(),
+        };
+        const { x, y } = user.position || { x: 0, y: 0 };
+        const planeSize = 500;
+        if (x === 0 && y === 0) {
+          const angle = Math.random() * Math.PI * 2;
+          const radius =
+            RESPAWN_RADIUS_MIN +
+            Math.random() * (RESPAWN_RADIUS_MAX - RESPAWN_RADIUS_MIN);
+          group.position.set(
+            Math.cos(angle) * radius,
+            0,
+            Math.sin(angle) * radius
+          );
+        } else {
+          const worldX = (x / containerSize.width - 0.5) * planeSize;
+          const worldZ = (y / containerSize.height - 0.5) * planeSize;
+          group.position.set(worldX, 0, worldZ);
+        }
+        const position = group.position;
+        const dist = position.length();
+        if (dist > 0) {
+          const tangent = new THREE.Vector3(
+            -position.z,
+            0,
+            position.x
+          ).normalize();
+          const speed =
+            Math.sqrt((G * BLACK_HOLE_MASS) / dist) * ORBIT_SPEED_SCALE;
+          state.physicsState[user.id].velocity.copy(
+            tangent.multiplyScalar(speed)
+          );
+        }
       }
-      let { x, y } = user.position || { x: 0, y: 0 };
-      if (
-        typeof x !== "number" ||
-        typeof y !== "number" ||
-        isNaN(x) ||
-        isNaN(y)
-      ) {
-        x = 0;
-        y = 0;
-      }
-      const planeSize = 500;
-      if (x === 0 && y === 0) {
-        const angle = Math.random() * Math.PI * 2;
-        const radius = 60 + Math.random() * 80;
-        x =
-          ((Math.cos(angle) * radius) / planeSize + 0.5) * containerSize.width;
-        y =
-          ((Math.sin(angle) * radius) / planeSize + 0.5) * containerSize.height;
-      }
-      const worldX = (x / containerSize.width - 0.5) * planeSize;
-      const worldZ = (y / containerSize.height - 0.5) * planeSize;
-      group.position.set(worldX, 0, worldZ);
     });
   }, [users, containerSize]);
 
-  // --- マウスイベントハンドラー (変更なし) ---
+  // --- マウスイベントハンドラー ---
   const handleMouseDown = useCallback((event: React.MouseEvent) => {
     if ((event.target as HTMLElement).closest(".spaceship-anim-container"))
       return;
@@ -472,6 +735,10 @@ export default function SpaceStation({
           if (avatarGroup) {
             avatarGroup.position.x = point.x;
             avatarGroup.position.z = point.z;
+            const physics = state.physicsState[draggedUserId];
+            if (physics) {
+              physics.velocity.set(0, 0, 0);
+            }
             const planeSize = 500;
             const x = (point.x / planeSize + 0.5) * containerSize.width;
             const y = (point.z / planeSize + 0.5) * containerSize.height;
@@ -526,7 +793,9 @@ export default function SpaceStation({
         {users.map((user) => (
           <SpaceshipAvatar
             ref={(el) => {
-              threeJsState.current.avatarElements[user.id] = el;
+              if (threeJsState.current.avatarElements) {
+                threeJsState.current.avatarElements[user.id] = el;
+              }
             }}
             key={user.id}
             user={user}
