@@ -7,9 +7,15 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Message } from "@/lib/types";
 import { formatDistanceToNow } from "date-fns";
 import { ja } from "date-fns/locale";
-import { Send } from "lucide-react";
+import {
+  AnimatePresence,
+  motion,
+  useMotionValue,
+  useTransform,
+} from "framer-motion";
+import { Send, Sparkles } from "lucide-react";
 import type React from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface ChatInterfaceProps {
   messages: Message[];
@@ -33,157 +39,315 @@ export default function ChatInterface({
   onSendMessage,
 }: ChatInterfaceProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isSending, setIsSending] = useState(false);
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Enterキーが押され、Shiftキーが押されていない場合にメッセージを送信
-    // IME（日本語）入力中はEnterキーを無視する
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault(); // デフォルトの改行動作をキャンセル
-      onSendMessage();
+      e.preventDefault();
+      handleSend();
     }
   };
 
+  const handleSend = () => {
+    if (inputValue.trim()) {
+      setIsSending(true);
+      onSendMessage();
+      setTimeout(() => setIsSending(false), 300);
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    mouseX.set(e.clientX - rect.left);
+    mouseY.set(e.clientY - rect.top);
+  };
+
   useEffect(() => {
-    // 新しいメッセージが追加された際や、タイピング中のユーザーがいる場合に、自動的にスクロール
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, typingUsers]);
 
   return (
-    <div className="flex flex-col h-full">
+    <motion.div
+      className="flex flex-col h-full relative overflow-hidden"
+      onMouseMove={handleMouseMove}
+    >
+      {/* 背景グラデーションエフェクト */}
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50/20 to-violet-50/20 dark:from-slate-950 dark:via-blue-950/20 dark:to-violet-950/20 -z-10" />
+
+      {/* 動的な光のエフェクト */}
+      <motion.div
+        className="absolute w-96 h-96 bg-gradient-to-r from-blue-400/20 to-violet-400/20 dark:from-blue-600/10 dark:to-violet-600/10 rounded-full blur-3xl"
+        style={{
+          x: useTransform(mouseX, [0, window.innerWidth], [-200, 200]),
+          y: useTransform(mouseY, [0, window.innerHeight], [-200, 200]),
+        }}
+      />
+
       {/* チャットメッセージ表示エリア */}
       <div className="flex-1 overflow-hidden relative">
         <ScrollArea className="h-full absolute inset-0 p-4">
           <div className="space-y-4 pb-2">
-            {messages.map((message) => (
-              <div key={message.id} className="chat-message">
-                {/* システムメッセージとユーザーメッセージで表示を分岐 */}
-                {message.type === "system" ? (
-                  // システムメッセージ：中央揃えで表示
-                  <div className="flex justify-center">
-                    <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-3 py-1 rounded-full">
-                      {message.content}
-                    </span>
-                  </div>
-                ) : (
-                  // ユーザーメッセージ：送信者によって左右に寄せて表示
-                  <div
-                    className={`flex gap-2 ${
-                      message.sender === currentUser
-                        ? "justify-end" // ログインユーザーのメッセージは右寄せ
-                        : "justify-start" // 他のユーザーのメッセージは左寄せ
-                    }`}
-                  >
-                    {message.sender !== currentUser && (
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage
-                          src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${message.sender}`}
-                        />
-                        <AvatarFallback>
-                          {message.sender?.charAt(0) || "?"}
-                        </AvatarFallback>
-                      </Avatar>
-                    )}
+            <AnimatePresence mode="popLayout">
+              {messages.map((message, index) => (
+                <motion.div
+                  key={message.id}
+                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{
+                    duration: 0.4,
+                    ease: [0.23, 1, 0.32, 1],
+                    delay: index * 0.05,
+                  }}
+                  className="chat-message"
+                >
+                  {message.type === "system" ? (
+                    <motion.div
+                      className="flex justify-center"
+                      whileHover={{ scale: 1.05 }}
+                      transition={{ type: "spring", stiffness: 400 }}
+                    >
+                      <span className="text-xs bg-gradient-to-r from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 text-slate-600 dark:text-slate-300 px-4 py-1.5 rounded-full shadow-sm backdrop-blur-sm border border-slate-200/50 dark:border-slate-600/50">
+                        <Sparkles className="inline-block w-3 h-3 mr-1" />
+                        {message.content}
+                      </span>
+                    </motion.div>
+                  ) : (
                     <div
-                      className={`max-w-[80%] ${
-                        message.sender === currentUser ? "order-first" : ""
+                      className={`flex gap-3 ${
+                        message.sender === currentUser
+                          ? "justify-end"
+                          : "justify-start"
                       }`}
                     >
-                      <div className="flex items-center gap-2 mb-1">
-                        {message.sender !== currentUser && (
-                          <span className="text-sm font-medium">
-                            {message.sender}
-                          </span>
-                        )}
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
-                          {formatDistanceToNow(new Date(message.timestamp), {
-                            addSuffix: true,
-                            locale: ja,
-                          })}
-                        </span>
-                      </div>
-                      <div
-                        className={`p-3 rounded-lg ${
-                          message.sender === currentUser
-                            ? "bg-blue-600 text-white ml-auto"
-                            : "bg-white dark:bg-slate-800 border dark:border-slate-700"
+                      {message.sender !== currentUser && (
+                        <motion.div
+                          whileHover={{ scale: 1.1, rotate: 5 }}
+                          transition={{ type: "spring", stiffness: 300 }}
+                        >
+                          <Avatar className="h-10 w-10 ring-2 ring-white dark:ring-slate-800 shadow-lg">
+                            <AvatarImage
+                              src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${message.sender}`}
+                            />
+                            <AvatarFallback className="bg-gradient-to-br from-blue-400 to-violet-400 text-white font-semibold">
+                              {message.sender?.charAt(0) || "?"}
+                            </AvatarFallback>
+                          </Avatar>
+                        </motion.div>
+                      )}
+                      <motion.div
+                        className={`max-w-[80%] ${
+                          message.sender === currentUser ? "order-first" : ""
                         }`}
+                        whileHover={{ scale: 1.01 }}
+                        transition={{ type: "spring", stiffness: 400 }}
                       >
-                        {message.content}
-                      </div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          {message.sender !== currentUser && (
+                            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                              {message.sender}
+                            </span>
+                          )}
+                          <span className="text-xs text-slate-400 dark:text-slate-500">
+                            {formatDistanceToNow(new Date(message.timestamp), {
+                              addSuffix: true,
+                              locale: ja,
+                            })}
+                          </span>
+                        </div>
+                        <motion.div
+                          className={`p-4 rounded-2xl relative overflow-hidden ${
+                            message.sender === currentUser
+                              ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white ml-auto shadow-lg shadow-blue-500/20"
+                              : "bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border border-slate-200/50 dark:border-slate-700/50 shadow-lg"
+                          }`}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          {/* メッセージ背景のグラデーション効果 */}
+                          {message.sender === currentUser && (
+                            <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-white/20 opacity-50" />
+                          )}
+                          <p
+                            className={`relative z-10 ${
+                              message.sender !== currentUser
+                                ? "text-slate-700 dark:text-slate-200"
+                                : ""
+                            }`}
+                          >
+                            {message.content}
+                          </p>
+                        </motion.div>
+                      </motion.div>
+                      {message.sender === currentUser && (
+                        <motion.div
+                          whileHover={{ scale: 1.1, rotate: -5 }}
+                          transition={{ type: "spring", stiffness: 300 }}
+                        >
+                          <Avatar className="h-10 w-10 ring-2 ring-white dark:ring-slate-800 shadow-lg">
+                            <AvatarImage
+                              src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${message.sender}`}
+                            />
+                            <AvatarFallback className="bg-gradient-to-br from-violet-400 to-purple-400 text-white font-semibold">
+                              {message.sender.charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                        </motion.div>
+                      )}
                     </div>
-                    {message.sender === currentUser && (
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage
-                          src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${message.sender}`}
-                        />
-                        <AvatarFallback>
-                          {message.sender.charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
+                  )}
+                </motion.div>
+              ))}
+            </AnimatePresence>
 
             {/* タイピング中のユーザーがいる場合にインジケーターを表示 */}
-            {typingUsers.length > 0 && (
-              <div className="flex items-center gap-2">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage
-                    src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${typingUsers[0]}`}
-                  />
-                  <AvatarFallback>{typingUsers[0].charAt(0)}</AvatarFallback>
-                </Avatar>
-                <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-3 rounded-lg">
-                  <div className="flex gap-1">
-                    <span className="animate-bounce">•</span>
-                    <span
-                      className="animate-bounce"
-                      style={{ animationDelay: "0.2s" }}
-                    >
-                      •
-                    </span>
-                    <span
-                      className="animate-bounce"
-                      style={{ animationDelay: "0.4s" }}
-                    >
-                      •
-                    </span>
-                  </div>
-                </div>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {typingUsers.join(", ")}{" "}
-                  {typingUsers.length === 1 ? "is" : "are"} typing...
-                </span>
-              </div>
-            )}
+            <AnimatePresence>
+              {typingUsers.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                  className="flex items-center gap-3"
+                >
+                  <motion.div
+                    animate={{ rotate: [0, 5, -5, 0] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  >
+                    <Avatar className="h-10 w-10 ring-2 ring-white dark:ring-slate-800 shadow-lg">
+                      <AvatarImage
+                        src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${typingUsers[0]}`}
+                      />
+                      <AvatarFallback className="bg-gradient-to-br from-emerald-400 to-teal-400 text-white font-semibold">
+                        {typingUsers[0].charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </motion.div>
+                  <motion.div
+                    className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border border-slate-200/50 dark:border-slate-700/50 p-4 rounded-2xl shadow-lg"
+                    animate={{ scale: [1, 1.02, 1] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                  >
+                    <div className="flex gap-1.5">
+                      {[0, 0.2, 0.4].map((delay, i) => (
+                        <motion.span
+                          key={i}
+                          className="w-2 h-2 bg-gradient-to-br from-emerald-400 to-teal-400 rounded-full"
+                          animate={{
+                            y: [0, -8, 0],
+                            scale: [1, 1.2, 1],
+                          }}
+                          transition={{
+                            duration: 0.6,
+                            repeat: Infinity,
+                            delay,
+                            ease: "easeInOut",
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </motion.div>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    {typingUsers.join(", ")}{" "}
+                    {typingUsers.length === 1 ? "さんが" : "さん達が"}入力中...
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
       </div>
 
       {/* メッセージ入力エリア */}
-      <div className="p-4 border-t dark:border-slate-800 bg-white dark:bg-slate-900">
-        <div className="flex gap-2">
-          <Input
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="メッセージを追加..."
-            className="bg-white dark:bg-slate-900"
-          />
-          <Button
-            onClick={onSendMessage}
-            disabled={!inputValue.trim()}
-            className="bg-blue-700 hover:bg-blue-800"
+      <motion.div
+        className="p-4 border-t border-slate-200/50 dark:border-slate-800/50 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl"
+        initial={{ y: 100 }}
+        animate={{ y: 0 }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+      >
+        <div className="flex gap-3">
+          <motion.div
+            className="flex-1 relative"
+            whileFocus={{ scale: 1.01 }}
+            transition={{ type: "spring", stiffness: 400 }}
           >
-            <Send className="h-4 w-4" />
-          </Button>
+            <Input
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="メッセージを入力..."
+              className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 rounded-xl px-4 py-3 pr-12 shadow-sm focus:shadow-md transition-all duration-200 placeholder:text-slate-400"
+            />
+            {inputValue && (
+              <motion.div
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+              >
+                {inputValue.length}
+              </motion.div>
+            )}
+          </motion.div>
+          <motion.div
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 400 }}
+          >
+            <Button
+              onClick={handleSend}
+              disabled={!inputValue.trim()}
+              className={`
+                relative overflow-hidden rounded-xl px-4 py-3 shadow-lg transition-all duration-300
+                ${
+                  !inputValue.trim()
+                    ? "bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500"
+                    : "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-blue-500/25"
+                }
+              `}
+            >
+              <AnimatePresence mode="wait">
+                {isSending ? (
+                  <motion.div
+                    key="sending"
+                    initial={{ scale: 0, rotate: -180 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    exit={{ scale: 0, rotate: 180 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <Sparkles className="h-5 w-5" />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="send"
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    exit={{ scale: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <Send className="h-5 w-5" />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* 送信ボタンのリップルエフェクト */}
+              {inputValue.trim() && (
+                <motion.div
+                  className="absolute inset-0 bg-white/20"
+                  initial={{ scale: 0, opacity: 1 }}
+                  animate={{ scale: 2, opacity: 0 }}
+                  transition={{ duration: 0.6 }}
+                  style={{ originX: 0.5, originY: 0.5 }}
+                />
+              )}
+            </Button>
+          </motion.div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

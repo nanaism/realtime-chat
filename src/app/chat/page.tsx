@@ -406,10 +406,11 @@ export default function ChatPage() {
     <div className="flex flex-col h-screen bg-zinc-50 dark:bg-zinc-950">
       <header className="py-4 px-8 flex items-center justify-between border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">✨️✨️</span>
-          <h1 className="text-xl font-semibold">
-            <Link href="/">Oga Space</Link>
-          </h1>
+          <span className="text-2xl">🪐</span>
+            <h1 className="text-3xl font-bold tracking-tight font-sans bg-gradient-to-r from-indigo-300 to-purple-700 bg-clip-text text-transparent">
+            <Link href="/" className="hover:opacity-80 transition-opacity">Oga Space</Link>
+            </h1>
+          <span className="text-2xl">✨️</span>
         </div>
         <div className="text-sm text-zinc-500 dark:text-zinc-400">
           {users.length} 人参加中
