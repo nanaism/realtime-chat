@@ -407,9 +407,18 @@ export default function ChatPage() {
       <header className="py-4 px-8 flex items-center justify-between border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
         <div className="flex items-center gap-2">
           <span className="text-2xl">🪐</span>
-            <h1 className="text-3xl font-bold tracking-tight font-sans bg-gradient-to-r from-indigo-300 to-purple-700 bg-clip-text text-transparent">
-            <Link href="/" className="hover:opacity-80 transition-opacity">Oga Space</Link>
-            </h1>
+          <h1 className="text-3xl font-bold tracking-tight font-sans">
+            <Link
+              href="/"
+              className="bg-gradient-to-r from-indigo-300 to-purple-700 bg-clip-text text-transparent 
+             relative after:absolute after:bottom-0 after:left-0 after:h-[2px] after:w-0 
+             after:bg-gradient-to-r after:from-indigo-400 after:to-purple-600 
+             hover:after:w-full after:transition-all after:duration-300 
+             hover:from-indigo-400 hover:to-purple-700 transition-all duration-300"
+            >
+              Oga Space
+            </Link>
+          </h1>
           <span className="text-2xl">✨️</span>
         </div>
         <div className="text-sm text-zinc-500 dark:text-zinc-400">

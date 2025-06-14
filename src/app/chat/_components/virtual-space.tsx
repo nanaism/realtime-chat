@@ -29,7 +29,7 @@ interface SpaceStationProps {
 
 // --- 物理定数 ---
 const G = 50; // 重力定数（シミュレーションのスケール調整用）
-const BLACK_HOLE_MASS = 50; // ブラックホールの質量
+const BLACK_HOLE_MASS = 30; // ブラックホールの質量
 const SPACESHIP_MASS = 1.0; // 宇宙船の質量
 const INTER_AVATAR_GRAVITY_SCALE = 1; // アバター間の重力の影響度
 

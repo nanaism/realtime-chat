@@ -131,7 +131,7 @@ export default function ChatInterface({
                         >
                           <Avatar className="h-10 w-10 ring-2 ring-white dark:ring-slate-800 shadow-lg">
                             <AvatarImage
-                              src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${message.sender}`}
+                              src={`https://api.dicebear.com/7.x/notionists/svg?seed=${message.sender}`}
                             />
                             <AvatarFallback className="bg-gradient-to-br from-blue-400 to-violet-400 text-white font-semibold">
                               {message.sender?.charAt(0) || "?"}
@@ -189,7 +189,7 @@ export default function ChatInterface({
                         >
                           <Avatar className="h-10 w-10 ring-2 ring-white dark:ring-slate-800 shadow-lg">
                             <AvatarImage
-                              src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${message.sender}`}
+                              src={`https://api.dicebear.com/7.x/notionists/svg?seed=${message.sender}`}
                             />
                             <AvatarFallback className="bg-gradient-to-br from-violet-400 to-purple-400 text-white font-semibold">
                               {message.sender.charAt(0)}
@@ -219,7 +219,7 @@ export default function ChatInterface({
                   >
                     <Avatar className="h-10 w-10 ring-2 ring-white dark:ring-slate-800 shadow-lg">
                       <AvatarImage
-                        src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${typingUsers[0]}`}
+                        src={`https://api.dicebear.com/7.x/notionists/svg?seed=${typingUsers[0]}`}
                       />
                       <AvatarFallback className="bg-gradient-to-br from-emerald-400 to-teal-400 text-white font-semibold">
                         {typingUsers[0].charAt(0)}
