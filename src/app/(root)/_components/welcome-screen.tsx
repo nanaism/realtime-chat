@@ -516,20 +516,27 @@ export default function WelcomeScreen() {
       console.log("名前チェック用のソケット接続完了:", socket.id);
 
       // サーバーに名前のチェックを依頼し、コールバックで結果を受け取る
-      socket.emit("user:check_name", username.trim(), (response) => {
-        if (response.available) {
-          // 名前が利用可能な場合
-          localStorage.setItem("username", username.trim());
-          router.push("/chat");
-          // 成功した場合、ローディングはページ遷移で終わるのでfalseにしなくてもよい
-        } else {
-          // 名前が使用中の場合
-          setError(response.message);
-          setIsLoading(false); // エラー表示のためにローディングを解除
+      socket.emit(
+        "user:check_name",
+        username.trim(),
+        (response: {
+          available: unknown;
+          message: React.SetStateAction<string | null>;
+        }) => {
+          if (response.available) {
+            // 名前が利用可能な場合
+            localStorage.setItem("username", username.trim());
+            router.push("/chat");
+            // 成功した場合、ローディングはページ遷移で終わるのでfalseにしなくてもよい
+          } else {
+            // 名前が使用中の場合
+            setError(response.message);
+            setIsLoading(false); // エラー表示のためにローディングを解除
+          }
+          // チェックが終わったら、この一時的なソケットは切断する
+          socket.disconnect();
         }
-        // チェックが終わったら、この一時的なソケットは切断する
-        socket.disconnect();
-      });
+      );
     });
 
     // 接続エラー時の処理
