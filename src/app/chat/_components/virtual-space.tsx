@@ -290,27 +290,30 @@ export default function SpaceStation({
     state.blackHoleGroup = new THREE.Group();
     state.scene.add(state.blackHoleGroup);
 
-    // 1. 事象の地平面 (黒い球)
+    // 1. 事象の地平面 (黒い球) - 変更なし
     const eventHorizon = new THREE.Mesh(
       new THREE.SphereGeometry(EVENT_HORIZON_RADIUS, 64, 64),
       new THREE.MeshBasicMaterial({ color: 0x000000 })
     );
     state.blackHoleGroup.add(eventHorizon);
 
-    // 2. 降着円盤 (Accretion Disk) - 2層構造に
+    // 2. 降着円盤 (Accretion Disk) - 多重リング・カラフルに刷新
     const diskGeometry = new THREE.RingGeometry(
       ACCRETION_DISK_INNER_RADIUS,
       ACCRETION_DISK_OUTER_RADIUS,
       256,
-      8
+      32 // 解像度を上げて滑らかに
     );
     const diskMaterial = new THREE.ShaderMaterial({
       uniforms: {
         time: { value: 0 },
-        // 3段階の色を設定 (内側 -> 中間 -> 外側)
-        innerColor: { value: new THREE.Color(0xfff8e7) }, // 高温の白黄色
-        midColor: { value: new THREE.Color(0xffb800) }, // 鮮やかなオレンジ
-        outerColor: { value: new THREE.Color(0xe55b00) }, // 低温の赤みがかったオレンジ
+        // 新しいカラーパレット
+        color1: { value: new THREE.Color(0xffffff) }, // 中心: 白
+        color2: { value: new THREE.Color(0xfff06e) }, // 黄色
+        color3: { value: new THREE.Color(0xff8c1a) }, // オレンジ
+        color4: { value: new THREE.Color(0x40a4df) }, // 明るい青
+        color5: { value: new THREE.Color(0x3643a5) }, // 暗い青
+        color6: { value: new THREE.Color(0x4b0082) }, // インディゴ
         dopplerBlue: { value: new THREE.Color(0.8, 0.9, 1.5) },
         dopplerRed: { value: new THREE.Color(1.5, 0.9, 0.8) },
       },
@@ -323,7 +326,6 @@ export default function SpaceStation({
           vec3 pos = position;
           vRadius = length(pos.xy);
           
-          // 持ち上げ効果を弱め、より自然な円形に
           float z_world = (modelMatrix * vec4(pos, 1.0)).z;
           float bendFactor = pow(max(0.0, z_world / ${ACCRETION_DISK_OUTER_RADIUS.toFixed(
             1
@@ -337,16 +339,13 @@ export default function SpaceStation({
       `,
       fragmentShader: `
         uniform float time;
-        uniform vec3 innerColor;
-        uniform vec3 midColor;
-        uniform vec3 outerColor;
-        uniform vec3 dopplerBlue;
-        uniform vec3 dopplerRed;
+        uniform vec3 color1, color2, color3, color4, color5, color6;
+        uniform vec3 dopplerBlue, dopplerRed;
         varying vec2 vUv;
         varying float vRadius;
         varying vec3 vWorldPosition;
 
-        // 2D Simplex Noise
+        // 2D Simplex Noise (変更なし)
         vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
         vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
         vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
@@ -363,8 +362,6 @@ export default function SpaceStation({
           vec3 g; g.x  = a0.x  * x0.x + h.x  * x0.y; g.yz = a0.yz * x12.xz + h.yz * x12.yw;
           return 130.0 * dot(m, g);
         }
-
-        // FBM (Fractal Brownian Motion) for complex patterns
         float fbm(vec2 p) {
             float value = 0.0; float amplitude = 0.5;
             for (int i = 0; i < 5; i++) { value += amplitude * snoise(p); p *= 2.0; amplitude *= 0.5; }
@@ -378,52 +375,70 @@ export default function SpaceStation({
         ACCRETION_DISK_OUTER_RADIUS - ACCRETION_DISK_INNER_RADIUS
       ).toFixed(1)});
           
-          // --- 層の定義 ---
-          float gap_start = 0.45;
-          float gap_end = 0.5;
-          float gap_width = 0.02;
-
-          // 隙間部分のアルファを0にするマスク
-          float gap_mask = 1.0 - smoothstep(gap_start - gap_width, gap_start, normalizedRadius) * (1.0 - smoothstep(gap_end, gap_end + gap_width, normalizedRadius));
-
-          vec3 baseColor;
-          float speed;
-          float noise_scale;
-
-          if (normalizedRadius < gap_start) {
-            // 内側リング
-            float innerNormalizedRadius = normalizedRadius / gap_start;
-            baseColor = mix(innerColor, midColor, innerNormalizedRadius);
-            speed = 0.4 / (innerNormalizedRadius + 0.1); // 速い回転
-            noise_scale = 4.0;
-          } else {
-            // 外側リング
-            float outerNormalizedRadius = (normalizedRadius - gap_end) / (1.0 - gap_end);
-            baseColor = mix(midColor, outerColor, outerNormalizedRadius);
-            speed = 0.15 / (outerNormalizedRadius + 0.2); // 遅い回転
-            noise_scale = 6.0;
+          vec3 ringColor = vec3(0.0);
+          float ringAlpha = 0.0;
+          float speed = 0.0;
+          float noise_scale = 0.0;
+          
+          // --- リングの定義 (ここがメインのロジック) ---
+          // Ring 1 (最内周)
+          if (normalizedRadius < 0.2) {
+              float localRadius = normalizedRadius / 0.2;
+              ringColor = mix(color1, color2, localRadius);
+              speed = 0.8;
+              noise_scale = 3.0;
+              ringAlpha = smoothstep(0.0, 0.02, normalizedRadius) * (1.0 - smoothstep(0.18, 0.2, normalizedRadius));
           }
-          
-          float angle = atan(vUv.y * 2.0 - 1.0, vUv.x * 2.0 - 1.0);
-          float timeOffset = time * speed;
-          
-          vec2 noiseCoord = vec2(angle * 3.0, normalizedRadius * noise_scale - timeOffset);
-          float noise = fbm(noiseCoord);
-          noise = pow(noise, 3.0);
+          // Ring 2
+          else if (normalizedRadius > 0.25 && normalizedRadius < 0.5) {
+              float localRadius = (normalizedRadius - 0.25) / 0.25;
+              ringColor = mix(color2, color3, localRadius);
+              speed = 0.4;
+              noise_scale = 5.0;
+              ringAlpha = smoothstep(0.25, 0.27, normalizedRadius) * (1.0 - smoothstep(0.48, 0.5, normalizedRadius));
+          }
+          // Ring 3
+          else if (normalizedRadius > 0.55 && normalizedRadius < 0.75) {
+              float localRadius = (normalizedRadius - 0.55) / 0.2;
+              ringColor = mix(color4, color5, localRadius);
+              speed = 0.2;
+              noise_scale = 8.0;
+              ringAlpha = smoothstep(0.55, 0.57, normalizedRadius) * (1.0 - smoothstep(0.73, 0.75, normalizedRadius));
+          }
+          // Ring 4 (最外周)
+          else if (normalizedRadius > 0.8 && normalizedRadius <= 1.0) {
+              float localRadius = (normalizedRadius - 0.8) / 0.2;
+              ringColor = mix(color5, color6, localRadius);
+              speed = 0.1;
+              noise_scale = 12.0;
+              ringAlpha = smoothstep(0.8, 0.82, normalizedRadius) * (1.0 - smoothstep(0.98, 1.0, normalizedRadius));
+          }
 
-          vec3 finalColor = baseColor;
-          
-          float doppler = smoothstep(-${ACCRETION_DISK_OUTER_RADIUS.toFixed(
-            1
-          )}, ${ACCRETION_DISK_OUTER_RADIUS.toFixed(1)}, vWorldPosition.x);
-          vec3 dopplerColor = mix(dopplerBlue, dopplerRed, doppler);
-          finalColor *= dopplerColor;
+          if (ringAlpha > 0.0) {
+              float angle = atan(vUv.y * 2.0 - 1.0, vUv.x * 2.0 - 1.0);
+              float timeOffset = time * speed;
+              
+              vec2 noiseCoord = vec2(angle * 3.0, normalizedRadius * noise_scale - timeOffset);
+              float noise = fbm(noiseCoord);
+              noise = pow(noise, 3.0);
 
-          finalColor *= 1.0 + noise * 3.0;
+              vec3 finalColor = ringColor;
+              
+              // ドップラー効果
+              float doppler = smoothstep(-${ACCRETION_DISK_OUTER_RADIUS.toFixed(
+                1
+              )}, ${ACCRETION_DISK_OUTER_RADIUS.toFixed(1)}, vWorldPosition.x);
+              vec3 dopplerColor = mix(dopplerBlue, dopplerRed, doppler);
+              finalColor *= dopplerColor;
 
-          float edgeFade = smoothstep(0.0, 0.05, normalizedRadius) * smoothstep(1.0, 0.9, normalizedRadius);
-          
-          gl_FragColor = vec4(finalColor, edgeFade * gap_mask);
+              // ノイズによる輝度変化
+              finalColor *= 1.0 + noise * 3.0;
+
+              gl_FragColor = vec4(finalColor, ringAlpha);
+          } else {
+              // 隙間は透明
+              discard;
+          }
         }
       `,
       side: THREE.DoubleSide,
@@ -435,7 +450,7 @@ export default function SpaceStation({
     accretionDisk.rotation.x = Math.PI / 2.0;
     state.blackHoleGroup.add(accretionDisk);
 
-    // 3. 光子リング (Photon Sphere)
+    // 3. 光子リング (Photon Sphere) - 変更なし
     const photonRing = new THREE.Mesh(
       new THREE.TorusGeometry(PHOTON_SPHERE_RADIUS, 0.15, 32, 128),
       new THREE.MeshBasicMaterial({
@@ -446,15 +461,14 @@ export default function SpaceStation({
     photonRing.rotation.copy(accretionDisk.rotation);
     state.blackHoleGroup.add(photonRing);
 
-    // 4. ジェット (Jet) - 点滅を穏やかに
-    // ジェットのジオメトリを作成 - より精細な分割でスムーズに
+    // 4. ジェット (Jet) - 変更なし
     const jetGeometry = new THREE.CylinderGeometry(
       JET_BASE_RADIUS,
-      0.1, // 先端を細く
-      300, // 長さ
-      32, // 円周方向の分割数
-      64, // 高さ方向の分割数を増やしてよりスムーズに
-      true // オープンエンド
+      0.1,
+      300,
+      32,
+      64,
+      true
     );
     const jetMaterial = new THREE.ShaderMaterial({
       uniforms: { time: { value: 0 } },
