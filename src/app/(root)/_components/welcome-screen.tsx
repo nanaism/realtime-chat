@@ -566,7 +566,7 @@ export default function WelcomeScreen() {
   const features = [
     {
       icon: Users,
-      label: "参加者間の重力級のつながり",
+      label: "つながりの3D可視化",
       delay: 0.2,
       color: "from-blue-400 to-cyan-400",
     },

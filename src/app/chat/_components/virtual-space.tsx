@@ -668,7 +668,10 @@ export default function SpaceStation({
     const state = threeJsState.current;
     if (!state.scene || containerSize.width === 0 || containerSize.height === 0)
       return;
+
     const existingUserIds = new Set(users.map((u) => u.id));
+
+    // ユーザー削除の処理 (変更なし)
     Object.keys(state.avatarMeshes).forEach((userId) => {
       if (!existingUserIds.has(userId)) {
         if (state.avatarMeshes[userId])
@@ -678,9 +681,11 @@ export default function SpaceStation({
         delete state.physicsState[userId];
       }
     });
+
     users.forEach((user) => {
       let group = state.avatarMeshes[user.id];
       if (!group) {
+        // --- 新規ユーザーの追加処理 ---
         group = new THREE.Group();
         group.userData = { userId: user.id };
         state.scene!.add(group);
@@ -688,9 +693,14 @@ export default function SpaceStation({
         state.physicsState[user.id] = {
           velocity: new THREE.Vector3(),
         };
-        const { x, y } = user.position || { x: 0, y: 0 };
-        const planeSize = 500;
-        if (x === 0 && y === 0) {
+
+        // --- ▼▼▼ ここから修正 ▼▼▼ ---
+        // 初期位置をサーバーからのワールド座標で設定します。
+        // user.position.y はワールド座標の z に対応します。
+        if (user.position && (user.position.x !== 0 || user.position.y !== 0)) {
+          group.position.set(user.position.x, 0, user.position.y);
+        } else {
+          // サーバーに位置情報がない場合のフォールバック（既存のランダム配置ロジック）
           const angle = Math.random() * Math.PI * 2;
           const radius =
             RESPAWN_RADIUS_MIN +
@@ -700,11 +710,10 @@ export default function SpaceStation({
             0,
             Math.sin(angle) * radius
           );
-        } else {
-          const worldX = (x / containerSize.width - 0.5) * planeSize;
-          const worldZ = (y / containerSize.height - 0.5) * planeSize;
-          group.position.set(worldX, 0, worldZ);
         }
+        // --- ▲▲▲ ここまで修正 ▲▲▲ ---
+
+        // 初期速度の設定 (変更なし)
         const position = group.position;
         const dist = position.length();
         if (dist > 0) {
@@ -719,9 +728,34 @@ export default function SpaceStation({
             tangent.multiplyScalar(speed)
           );
         }
+      } else {
+        // --- ▼▼▼ ここから修正 (最重要ポイント) ▼▼▼ ---
+        // --- 既存ユーザーの位置更新処理 ---
+        // 他のユーザーが動かしたアイコンの位置を、自分の画面に反映させます。
+
+        // 自分がドラッグしている最中のアイコンは、サーバーからの情報で上書きしないようにします。
+        if (user.id !== draggedUserId && user.position) {
+          // user.positionはワールド座標なので、そのままVector3に変換します。
+          const targetPosition = new THREE.Vector3(
+            user.position.x,
+            0,
+            user.position.y
+          );
+
+          // サーバーの位置情報に即座に同期します。
+          group.position.copy(targetPosition);
+
+          // 他のユーザーによって動かされている間は、物理的な速度をリセットします。
+          const physics = state.physicsState[user.id];
+          if (physics) {
+            physics.velocity.set(0, 0, 0);
+          }
+        }
+        // --- ▲▲▲ ここまで修正 ▲▲▲ ---
       }
     });
-  }, [users, containerSize]);
+    // 依存配列に `draggedUserId` を追加して、ドラッグ開始/終了時に再評価されるようにします。
+  }, [users, containerSize, draggedUserId]);
 
   // --- マウスイベントハンドラー ---
   const handleMouseDown = useCallback((event: React.MouseEvent) => {
@@ -753,17 +787,14 @@ export default function SpaceStation({
             if (physics) {
               physics.velocity.set(0, 0, 0);
             }
-            const planeSize = 500;
-            const x = (point.x / planeSize + 0.5) * containerSize.width;
-            const y = (point.z / planeSize + 0.5) * containerSize.height;
-            throttledSendPosition(draggedUserId, { x, y });
+            throttledSendPosition(draggedUserId, { x: point.x, y: point.z });
           }
         }
       } else if (isOrbitingCamera) {
         state.controls?.onMouseMove(event.nativeEvent);
       }
     },
-    [containerSize, throttledSendPosition, draggedUserId, isOrbitingCamera]
+    [throttledSendPosition, draggedUserId, isOrbitingCamera]
   );
   const handleMouseUp = useCallback(() => {
     if (isOrbitingCamera) {

@@ -5,243 +5,253 @@ import UserList from "@/app/chat/_components/user-list";
 import VirtualSpace from "@/app/chat/_components/virtual-space";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { LogOut, MessageSquare, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useChatSocket } from "./_hooks/use-chat-socket";
 
-// パーティクルのプロパティを定義する型 (追加)
-type Particle = {
-  id: number;
-  left: string;
-  top: string;
-  x: number;
-  duration: number;
-  delay: number;
-};
+// 宇宙ダイブローディングコンポーネント
+const SpaceDiveLoading = ({ onComplete }: { onComplete: () => void }) => {
+  const [phase, setPhase] = useState<"initial" | "diving" | "entering">(
+    "initial"
+  );
+  const containerRef = useRef<HTMLDivElement>(null);
 
-// モダンなローディングコンポーネント
-const ModernLoading = () => {
-  // 螺旋を描くドットのデータ
-  const dots = Array.from({ length: 12 }, (_, i) => ({
-    id: i,
-    angle: (360 / 12) * i,
-    delay: i * 0.1,
-  }));
+  // --- ▼▼▼ ここから修正 ▼▼▼ ---
 
-  // 流体的なブロブのパス
-  const blobPaths = [
-    "M60,-60C80,-40,100,-20,100,0C100,20,80,40,60,60C40,80,20,100,0,100C-20,100,-40,80,-60,60C-80,40,-100,20,-100,0C-100,-20,-80,-40,-60,-60C-40,-80,-20,-100,0,-100C20,-100,40,-80,60,-60Z",
-    "M70,-70C85,-50,100,-25,100,0C100,25,85,50,70,70C50,85,25,100,0,100C-25,100,-50,85,-70,70C-85,50,-100,25,-100,0C-100,-25,-85,-50,-70,-70C-50,-85,-25,-100,0,-100C25,-100,50,-85,70,-70Z",
-    "M50,-80C70,-65,90,-40,95,-10C100,20,90,50,70,70C50,90,20,100,-10,95C-40,90,-65,70,-80,50C-95,30,-100,0,-95,-30C-90,-60,-70,-85,-45,-95C-20,-105,10,-105,35,-95C60,-85,30,-95,50,-80Z",
-  ];
+  // 型定義 (任意ですが、コードが読みやすくなります)
+  interface Star {
+    id: number;
+    x: number;
+    y: number;
+    z: number;
+    size: number;
+    brightness: number;
+  }
+  interface NebulaCloud {
+    id: number;
+    x: number;
+    y: number;
+    scale: number;
+    opacity: number;
+    color: "purple" | "blue" | "pink";
+  }
+  interface LightStreak {
+    id: number;
+    angle: number;
+    distance: number;
+    length: number;
+    delay: number;
+  }
 
-  // ★ 修正点: パーティクルのランダム値をstateで管理
-  const [particles, setParticles] = useState<Particle[]>([]);
+  // Stateの初期値を空の配列にする
+  const [stars, setStars] = useState<Star[]>([]);
+  const [nebulaClouds, setNebulaClouds] = useState<NebulaCloud[]>([]);
+  const [lightStreaks, setLightStreaks] = useState<LightStreak[]>([]);
 
-  // ★ 修正点: クライアントサイドでのみ実行されるuseEffectでランダム値を生成
+  // useEffectを使って、クライアントサイドでのみランダム値を生成する
   useEffect(() => {
-    const generatedParticles = Array.from(
-      { length: 20 },
-      (_, i): Particle => ({
+    // スターフィールドの生成
+    setStars(
+      Array.from({ length: 200 }, (_, i) => ({
         id: i,
-        left: `${Math.random() * 100}%`,
-        top: `${Math.random() * 100}%`,
-        x: Math.random() * 40 - 20,
-        duration: 3 + Math.random() * 2,
-        delay: Math.random() * 3,
-      })
+        x: Math.random() * 100,
+        y: Math.random() * 100,
+        z: Math.random() * 100,
+        size: Math.random() * 2 + 0.5,
+        brightness: Math.random() * 0.8 + 0.2,
+      }))
     );
-    setParticles(generatedParticles);
-  }, []); // 空の依存配列でマウント時に一度だけ実行
+
+    // ネビュラ雲の生成
+    setNebulaClouds(
+      Array.from({ length: 5 }, (_, i) => ({
+        id: i,
+        x: Math.random() * 100,
+        y: Math.random() * 100,
+        scale: Math.random() * 2 + 1,
+        opacity: Math.random() * 0.3 + 0.1,
+        color: (["purple", "blue", "pink"] as const)[
+          Math.floor(Math.random() * 3)
+        ],
+      }))
+    );
+
+    // 光の筋（ワープ効果）
+    setLightStreaks(
+      Array.from({ length: 50 }, (_, i) => ({
+        id: i,
+        angle: Math.random() * 360,
+        distance: Math.random() * 50 + 50,
+        length: Math.random() * 100 + 50,
+        delay: Math.random() * 0.5,
+      }))
+    );
+  }, []); // 空の依存配列で、初回マウント時に一度だけ実行
+
+  // --- ▲▲▲ ここまで修正 ▲▲▲ ---
+
+  useEffect(() => {
+    const timer1 = setTimeout(() => setPhase("diving"), 500);
+    const timer2 = setTimeout(() => setPhase("entering"), 2000);
+    const timer3 = setTimeout(() => onComplete(), 3000);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+    };
+  }, [onComplete]);
 
   return (
-    <div className="fixed inset-0 bg-white flex items-center justify-center overflow-hidden z-50">
-      {/* 背景のグラデーションメッシュ */}
-      <div className="absolute inset-0">
-        <motion.div
-          className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-purple-200/30 to-transparent rounded-full filter blur-3xl"
-          animate={{
-            x: [0, 100, 0],
-            y: [0, -100, 0],
-          }}
-          transition={{
-            duration: 20,
-            repeat: Infinity,
-            ease: "linear",
-          }}
-        />
-        <motion.div
-          className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-tl from-blue-200/30 to-transparent rounded-full filter blur-3xl"
-          animate={{
-            x: [0, -100, 0],
-            y: [0, 100, 0],
-          }}
-          transition={{
-            duration: 25,
-            repeat: Infinity,
-            ease: "linear",
-          }}
-        />
-      </div>
-
-      {/* メインコンテナ */}
-      <div className="relative">
-        {/* 外側の回転リング */}
-        <motion.div
-          className="absolute inset-0 w-48 h-48 -left-24 -top-24"
-          animate={{ rotate: 360 }}
-          transition={{
-            duration: 8,
-            repeat: Infinity,
-            ease: "linear",
-          }}
-        >
-          {dots.map((dot) => (
-            <motion.div
-              key={dot.id}
-              className="absolute w-full h-full"
-              style={{
-                rotate: `${dot.angle}deg`,
-              }}
-            >
-              <motion.div
-                className="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-2"
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{
-                  scale: [0, 1.5, 0],
-                  opacity: [0, 1, 0],
-                  y: [0, -20, -40],
-                }}
-                transition={{
-                  duration: 3,
-                  delay: dot.delay,
-                  repeat: Infinity,
-                  ease: "easeOut",
-                }}
-              >
-                <div className="w-full h-full bg-gradient-to-br from-purple-500 to-blue-500 rounded-full shadow-lg shadow-purple-500/50" />
-              </motion.div>
-            </motion.div>
-          ))}
-        </motion.div>
-
-        {/* 中心の流体シェイプ */}
-        <div className="relative w-48 h-48">
-          <svg viewBox="-120 -120 240 240" className="w-full h-full">
-            <defs>
-              <linearGradient
-                id="gradient1"
-                x1="0%"
-                y1="0%"
-                x2="100%"
-                y2="100%"
-              >
-                <motion.stop
-                  offset="0%"
-                  stopColor="#8B5CF6"
-                  animate={{
-                    stopColor: ["#8B5CF6", "#3B82F6", "#8B5CF6"],
-                  }}
-                  transition={{
-                    duration: 4,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }}
-                />
-                <motion.stop
-                  offset="100%"
-                  stopColor="#3B82F6"
-                  animate={{
-                    stopColor: ["#3B82F6", "#8B5CF6", "#3B82F6"],
-                  }}
-                  transition={{
-                    duration: 4,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }}
-                />
-              </linearGradient>
-              <filter id="glow">
-                <feGaussianBlur stdDeviation="4" result="coloredBlur" />
-                <feMerge>
-                  <feMergeNode in="coloredBlur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
-
-            {/* モーフィングブロブ */}
-            <motion.path
-              d={blobPaths[0]}
-              fill="url(#gradient1)"
-              filter="url(#glow)"
-              animate={{
-                d: blobPaths,
-                rotate: [0, 360],
-              }}
-              transition={{
-                d: {
-                  duration: 6,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                },
-                rotate: {
-                  duration: 20,
-                  repeat: Infinity,
-                  ease: "linear",
-                },
-              }}
-            />
-
-            {/* 内側の軌道リング */}
-            <motion.circle
-              cx="0"
-              cy="0"
-              r="60"
-              fill="none"
-              stroke="url(#gradient1)"
-              strokeWidth="0.5"
-              strokeDasharray="5 10"
-              opacity="0.3"
-              animate={{
-                rotate: -360,
-                strokeDashoffset: [0, -15],
-              }}
-              transition={{
-                rotate: {
-                  duration: 30,
-                  repeat: Infinity,
-                  ease: "linear",
-                },
-                strokeDashoffset: {
-                  duration: 2,
-                  repeat: Infinity,
-                  ease: "linear",
-                },
-              }}
-            />
-          </svg>
-
-          {/* 中心のコア */}
+    <AnimatePresence>
+      <motion.div
+        ref={containerRef}
+        className="fixed inset-0 bg-black overflow-hidden z-50"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        {/* 深宇宙背景グラデーション */}
+        <div className="absolute inset-0">
           <motion.div
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8"
+            className="absolute inset-0 bg-gradient-radial from-indigo-950/20 via-black to-black"
             animate={{
-              scale: [1, 1.2, 1],
+              scale: phase === "entering" ? 20 : 1,
+              opacity: phase === "entering" ? 0 : 1,
+            }}
+            transition={{ duration: 1.5, ease: "easeInOut" }}
+          />
+        </div>
+
+        {/* ネビュラ雲 */}
+        {nebulaClouds.map((cloud) => (
+          <motion.div
+            key={cloud.id}
+            className={`absolute rounded-full filter blur-3xl mix-blend-screen`}
+            style={{
+              left: `${cloud.x}%`,
+              top: `${cloud.y}%`,
+              width: `${cloud.scale * 300}px`,
+              height: `${cloud.scale * 300}px`,
+              background: `radial-gradient(circle, ${
+                cloud.color === "purple"
+                  ? "rgba(147, 51, 234, 0.3)"
+                  : cloud.color === "blue"
+                  ? "rgba(59, 130, 246, 0.3)"
+                  : "rgba(236, 72, 153, 0.3)"
+              } 0%, transparent 70%)`,
+            }}
+            animate={{
+              x: phase === "diving" ? "-200%" : 0,
+              scale: phase === "entering" ? 5 : 1,
+              opacity: phase === "entering" ? 0 : cloud.opacity,
             }}
             transition={{
-              duration: 2,
-              repeat: Infinity,
+              duration: phase === "diving" ? 2 : 1,
               ease: "easeInOut",
             }}
-          >
-            <div className="w-full h-full bg-white rounded-full shadow-2xl shadow-purple-500/50" />
+          />
+        ))}
+
+        {/* スターフィールド */}
+        <div className="absolute inset-0">
+          {stars.map((star) => (
             <motion.div
-              className="absolute inset-0 bg-gradient-to-br from-purple-400 to-blue-400 rounded-full"
+              key={star.id}
+              className="absolute rounded-full bg-white"
+              style={{
+                left: `${star.x}%`,
+                top: `${star.y}%`,
+                width: `${star.size}px`,
+                height: `${star.size}px`,
+                opacity: star.brightness,
+                boxShadow: `0 0 ${star.size * 2}px rgba(255,255,255,${
+                  star.brightness
+                })`,
+              }}
               animate={{
-                opacity: [0.3, 0.7, 0.3],
+                x: phase === "diving" ? `${-star.z * 10}vw` : 0,
+                y: phase === "diving" ? `${(50 - star.y) * 0.2}vh` : 0,
+                scale: phase === "entering" ? 0 : 1,
+                opacity: phase === "entering" ? 0 : star.brightness,
+              }}
+              transition={{
+                duration: phase === "diving" ? 2 - star.z / 100 : 0.5,
+                ease: phase === "diving" ? "easeIn" : "easeOut",
+              }}
+            />
+          ))}
+        </div>
+
+        {/* ワープストリーク効果 */}
+        {phase === "diving" && (
+          <motion.div
+            className="absolute inset-0 flex items-center justify-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            {lightStreaks.map((streak) => (
+              <motion.div
+                key={streak.id}
+                className="absolute w-1 bg-gradient-to-t from-transparent via-white to-transparent"
+                style={{
+                  height: `${streak.length}px`,
+                  transform: `rotate(${streak.angle}deg) translateY(-${streak.distance}vh)`,
+                  transformOrigin: "center bottom",
+                }}
+                initial={{ scaleY: 0, opacity: 0 }}
+                animate={{
+                  scaleY: [0, 1, 0],
+                  opacity: [0, 0.8, 0],
+                }}
+                transition={{
+                  duration: 0.8,
+                  delay: streak.delay,
+                  ease: "easeOut",
+                  repeat: phase === "diving" ? Infinity : 0,
+                  repeatDelay: 0.2,
+                }}
+              />
+            ))}
+          </motion.div>
+        )}
+
+        {/* ブラックホール */}
+        <motion.div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+          animate={{
+            scale: phase === "initial" ? 0 : phase === "diving" ? 1 : 30,
+            opacity: phase === "initial" ? 0 : 1,
+          }}
+          transition={{ duration: 1.5, ease: "easeInOut" }}
+        >
+          {/* イベントホライズン */}
+          <motion.div
+            className="relative w-48 h-48"
+            animate={{
+              rotate: 360,
+            }}
+            transition={{
+              duration: 10,
+              repeat: Infinity,
+              ease: "linear",
+            }}
+          >
+            {/* 降着円盤 */}
+            <motion.div
+              className="absolute inset-0 rounded-full"
+              style={{
+                background:
+                  "conic-gradient(from 0deg, #f97316, #eab308, #84cc16, #06b6d4, #6366f1, #c026d3, #f97316)",
+                filter: "blur(8px)",
+              }}
+              animate={{
+                scale: [1, 1.2, 1],
               }}
               transition={{
                 duration: 2,
@@ -249,84 +259,82 @@ const ModernLoading = () => {
                 ease: "easeInOut",
               }}
             />
-          </motion.div>
 
-          {/* 周回する小さな球体 */}
-          {[0, 120, 240].map((angle, index) => (
+            {/* ブラックホール本体 */}
+            <div className="absolute inset-8 rounded-full bg-black shadow-[0_0_100px_20px_rgba(0,0,0,0.8)]" />
+
+            {/* 重力レンズ効果 */}
             <motion.div
-              key={angle}
-              className="absolute top-1/2 left-1/2 w-full h-full -translate-x-1/2 -translate-y-1/2"
+              className="absolute -inset-4 rounded-full border-2 border-white/20"
+              style={{
+                boxShadow: "inset 0 0 50px rgba(255,255,255,0.1)",
+              }}
               animate={{
-                rotate: [angle, angle + 360],
+                scale: [1, 1.1, 1],
+                opacity: [0.3, 0.6, 0.3],
               }}
               transition={{
-                duration: 3 + index,
+                duration: 3,
                 repeat: Infinity,
-                ease: "linear",
+                ease: "easeInOut",
               }}
-            >
-              <motion.div
-                className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4"
-                animate={{
-                  scale: [0.8, 1.2, 0.8],
-                }}
-                transition={{
-                  duration: 2,
-                  delay: index * 0.3,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
-              >
-                <div className="w-full h-full bg-gradient-to-br from-white to-purple-400 rounded-full shadow-lg shadow-purple-500/50" />
-              </motion.div>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* 放射状のパルス */}
-        <motion.div
-          className="absolute inset-0 -inset-8"
-          initial={{ opacity: 0 }}
-          animate={{
-            scale: [1, 2, 2.5],
-            opacity: [0, 0.5, 0],
-          }}
-          transition={{
-            duration: 3,
-            repeat: Infinity,
-            ease: "easeOut",
-          }}
-        >
-          <div className="w-full h-full border border-purple-300 rounded-full" />
+            />
+          </motion.div>
         </motion.div>
-      </div>
 
-      {/* 微細なパーティクル */}
-      {/* ★ 修正点: stateの値を使ってパーティクルを描画 */}
-      <div className="absolute inset-0 pointer-events-none">
-        {particles.map((p) => (
-          <motion.div
-            key={p.id}
-            className="absolute w-1 h-1 bg-gradient-to-br from-purple-400 to-blue-400 rounded-full"
-            style={{
-              left: p.left,
-              top: p.top,
-            }}
+        {/* ダイブテキスト */}
+        <motion.div
+          className="absolute bottom-20 left-1/2 -translate-x-1/2 text-center"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{
+            opacity: phase === "initial" ? 1 : 0,
+            y: phase === "initial" ? 0 : -20,
+          }}
+          transition={{ duration: 0.5 }}
+        >
+          <motion.h2
+            className="text-4xl font-bold text-white mb-4"
             animate={{
-              y: [-20, 20],
-              x: [0, p.x],
-              opacity: [0, 1, 0],
+              opacity: [0.5, 1, 0.5],
             }}
             transition={{
-              duration: p.duration,
-              delay: p.delay,
+              duration: 2,
               repeat: Infinity,
               ease: "easeInOut",
             }}
+          >
+            Diving into Space
+          </motion.h2>
+          <motion.div className="flex justify-center space-x-1">
+            {[0, 1, 2].map((i) => (
+              <motion.div
+                key={i}
+                className="w-2 h-2 bg-white rounded-full"
+                animate={{
+                  y: [0, -10, 0],
+                }}
+                transition={{
+                  duration: 0.6,
+                  delay: i * 0.2,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+              />
+            ))}
+          </motion.div>
+        </motion.div>
+
+        {/* ハイパースペースエフェクト（最終段階） */}
+        {phase === "entering" && (
+          <motion.div
+            className="absolute inset-0 bg-white"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 1, 0] }}
+            transition={{ duration: 0.5, times: [0, 0.5, 1] }}
           />
-        ))}
-      </div>
-    </div>
+        )}
+      </motion.div>
+    </AnimatePresence>
   );
 };
 
@@ -336,6 +344,8 @@ export default function ChatPage() {
   const [inputValue, setInputValue] = useState("");
   const [showUserPanel, setShowUserPanel] = useState(false);
   const [activeTab, setActiveTab] = useState("chat");
+  const [showSpaceDive, setShowSpaceDive] = useState(true);
+  const [minimumLoadTimePassed, setMinimumLoadTimePassed] = useState(false);
 
   useEffect(() => {
     const storedUsername = localStorage.getItem("username");
@@ -344,6 +354,13 @@ export default function ChatPage() {
     } else {
       setUsername(storedUsername);
     }
+
+    // 最低1秒のローディング時間を保証
+    const timer = setTimeout(() => {
+      setMinimumLoadTimePassed(true);
+    }, 1000);
+
+    return () => clearTimeout(timer);
   }, [router]);
 
   const {
@@ -398,12 +415,28 @@ export default function ChatPage() {
     setActiveTab(tab);
   };
 
-  if (!username || !isSocketInitialized) {
-    return <ModernLoading />;
+  const handleSpaceDiveComplete = () => {
+    setShowSpaceDive(false);
+  };
+
+  // ローディング条件を更新
+  const shouldShowLoading =
+    !username ||
+    !isSocketInitialized ||
+    !minimumLoadTimePassed ||
+    showSpaceDive;
+
+  if (shouldShowLoading) {
+    return <SpaceDiveLoading onComplete={handleSpaceDiveComplete} />;
   }
 
   return (
-    <div className="flex flex-col h-screen bg-zinc-50 dark:bg-zinc-950">
+    <motion.div
+      className="flex flex-col h-screen bg-zinc-50 dark:bg-zinc-950"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+    >
       <header className="py-4 px-8 flex items-center justify-between border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
         <div className="flex items-center gap-2">
           <span className="text-2xl">🪐</span>
@@ -525,6 +558,6 @@ export default function ChatPage() {
           </Button>
         </div>
       </footer>
-    </div>
+    </motion.div>
   );
 }
