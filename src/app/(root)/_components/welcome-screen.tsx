@@ -1,4 +1,7 @@
+// WelcomeScreen.tsx
+
 "use client";
+
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -17,6 +20,7 @@ import {
   useMotionValue,
   useSpring,
   useTransform,
+  Variants,
 } from "framer-motion";
 import gsap from "gsap";
 import Lottie from "lottie-react";
@@ -25,6 +29,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import type React from "react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { io, Socket } from "socket.io-client"; // ★★★ socket.io-clientをインポート ★★★
 
 // Advanced Lottie Animation - Floating Orbs (変更なし)
 const floatingOrbAnimation = {
@@ -130,26 +135,16 @@ const floatingOrbAnimation = {
   ],
 };
 
-// 必要な型をframer-motionからインポート
-import { Variants } from "framer-motion";
-
-// ... 他のimport文
-
-// =================================================================
-// === ✨ 修正されたロゴアニメーションコンポーネント ✨ ===
-// =================================================================
 const LogoAnimation = memo(() => {
   const [isHovered, setIsHovered] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // 磁気的な追従のためのMotion ValueとSpring
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
   const springConfig = { damping: 15, stiffness: 200, mass: 0.1 };
   const springX = useSpring(mouseX, springConfig);
   const springY = useSpring(mouseY, springConfig);
 
-  // 3D回転エフェクト
   const rotateX = useTransform(springY, [-0.5, 0.5], [25, -25]);
   const rotateY = useTransform(springX, [-0.5, 0.5], [-25, 25]);
   const scale = useTransform<[number, number], number>(
@@ -163,7 +158,6 @@ const LogoAnimation = memo(() => {
         0.1
   );
 
-  // マウスイベントのハンドラ
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!ref.current) return;
@@ -186,7 +180,6 @@ const LogoAnimation = memo(() => {
     setIsHovered(true);
   }, []);
 
-  // 【修正点2】'any'を排除するため、variantsを使用
   const prismaticVariants: Variants = {
     initial: {
       opacity: 0,
@@ -222,7 +215,6 @@ const LogoAnimation = memo(() => {
         perspective: 800,
       }}
     >
-      {/* 1. プリズマティック効果 (Prismatic Effect) */}
       <motion.div
         className="absolute inset-0 rounded-3xl"
         style={{
@@ -235,7 +227,6 @@ const LogoAnimation = memo(() => {
         initial="initial"
         animate={isHovered ? "hover" : "initial"}
       />
-      {/* 2. ダイナミックグロー (Dynamic Glow) */}
       <motion.div
         className="absolute inset-[-10px] rounded-3xl"
         initial={{ opacity: 0 }}
@@ -255,55 +246,6 @@ const LogoAnimation = memo(() => {
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
         />
       </motion.div>
-      {/* 3. RGBグリッチ分解 (RGB Glitch) */}
-      {/* <AnimatePresence>
-        {isHovered && (
-          <>
-            <motion.div
-              className="absolute inset-0 pointer-events-none"
-              style={{ x: glichX, y: glichY, mixBlendMode: "screen" }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.5 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <Image
-                src="/chat-app-icon.png"
-                width={150}
-                height={150}
-                alt=""
-                className="rounded-3xl"
-                style={{ filter: "hue-rotate(120deg) saturate(2)" }}
-                aria-hidden
-              />
-            </motion.div>
-            <motion.div
-              className="absolute inset-0 pointer-events-none"
-              // 【修正点1】トップレベルで定義したMotionValueを使用
-              style={{
-                x: glichXInverted,
-                y: glichYInverted,
-                mixBlendMode: "screen",
-              }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.5 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <Image
-                src="/chat-app-icon.png"
-                width={150}
-                height={150}
-                alt=""
-                className="rounded-3xl"
-                style={{ filter: "hue-rotate(-120deg) saturate(2)" }}
-                aria-hidden
-              />
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence> */}
-      {/* 4. メインロゴ & 3D回転 & 磁気追従 */}
       <motion.div
         style={{
           rotateX,
@@ -325,7 +267,6 @@ const LogoAnimation = memo(() => {
             boxShadow: "0 10px 30px rgba(0, 0, 0, 0.2)",
           }}
         />
-        {/* 5. 3Dホログラム効果 (Hologram Effect) */}
         <motion.div
           className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none z-20"
           initial={{ opacity: 0 }}
@@ -366,7 +307,6 @@ const LogoAnimation = memo(() => {
           />
         </motion.div>
       </motion.div>
-      {/* 6. パーティクル爆発 (Particle Burst) */}
       <div className="absolute inset-0 w-full h-full pointer-events-none">
         <AnimatePresence>
           {isHovered &&
@@ -397,7 +337,6 @@ const LogoAnimation = memo(() => {
             })}
         </AnimatePresence>
       </div>
-      {/* 7. フローティングオーブ (Floating Orbs) */}
       <div className="absolute inset-0 w-full h-full pointer-events-none">
         <AnimatePresence>
           {isHovered &&
@@ -456,6 +395,11 @@ export default function WelcomeScreen() {
   const [username, setUsername] = useState("");
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // --- ▼▼▼ ここから追加 ▼▼▼ ---
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // --- ▲▲▲ ここまで追加 ▲▲▲ ---
 
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
@@ -555,13 +499,49 @@ export default function WelcomeScreen() {
     };
   }, []);
 
+  // --- ▼▼▼ ここから handleSubmit を大幅に修正 ▼▼▼ ---
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username.trim()) {
-      localStorage.setItem("username", username.trim());
-      router.push("/chat");
-    }
+    if (!username.trim() || isLoading) return;
+
+    // 以前のエラーをクリアし、ローディング状態にする
+    setError(null);
+    setIsLoading(true);
+
+    // 名前のチェックのためだけに一時的なソケット接続を作成
+    const socket: Socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "");
+
+    // 接続成功時の処理
+    socket.on("connect", () => {
+      console.log("名前チェック用のソケット接続完了:", socket.id);
+
+      // サーバーに名前のチェックを依頼し、コールバックで結果を受け取る
+      socket.emit("user:check_name", username.trim(), (response) => {
+        if (response.available) {
+          // 名前が利用可能な場合
+          localStorage.setItem("username", username.trim());
+          router.push("/chat");
+          // 成功した場合、ローディングはページ遷移で終わるのでfalseにしなくてもよい
+        } else {
+          // 名前が使用中の場合
+          setError(response.message);
+          setIsLoading(false); // エラー表示のためにローディングを解除
+        }
+        // チェックが終わったら、この一時的なソケットは切断する
+        socket.disconnect();
+      });
+    });
+
+    // 接続エラー時の処理
+    socket.on("connect_error", () => {
+      setError(
+        "サーバーに接続できませんでした。時間をおいて再試行してください。"
+      );
+      setIsLoading(false);
+      socket.disconnect();
+    });
   };
+  // --- ▲▲▲ ここまで handleSubmit の修正完了 ▲▲▲ ---
 
   const features = [
     {
@@ -641,9 +621,8 @@ export default function WelcomeScreen() {
                   duration: 0.8,
                   ease: [0.21, 1.11, 0.81, 0.99],
                 }}
-                className="flex items-center justify-center mb-4" // mb-4を追加してスペースを確保
+                className="flex items-center justify-center mb-4"
               >
-                {/* === ここを新しいコンポーネントに置き換え === */}
                 <LogoAnimation />
               </motion.div>
 
@@ -673,7 +652,7 @@ export default function WelcomeScreen() {
                 </motion.div>
               </CardDescription>
             </CardHeader>
-            {/* 以下、CardContent, CardFooter は変更なし */}
+
             <CardContent className="space-y-6 relative z-10">
               <div className="flex flex-wrap justify-center gap-4 py-4">
                 {features.map((feature) => (
@@ -805,8 +784,12 @@ export default function WelcomeScreen() {
                         id="username"
                         placeholder="あなたの名前は？"
                         value={username}
-                        onChange={(e) => setUsername(e.target.value)}
+                        onChange={(e) => {
+                          setUsername(e.target.value);
+                          if (error) setError(null);
+                        }}
                         required
+                        disabled={isLoading}
                         className="backdrop-blur-sm bg-white/60 dark:bg-white/10 border-white/30 hover:border-blue-300/50 focus:border-blue-500/50 transition-all duration-300 pl-4 pr-12 py-6 text-lg rounded-xl shadow-inner w-full"
                         style={{
                           boxShadow:
@@ -835,6 +818,22 @@ export default function WelcomeScreen() {
                         )}
                       </AnimatePresence>
                     </div>
+
+                    {/* --- ▼▼▼ エラーメッセージ表示を追加 ▼▼▼ --- */}
+                    <AnimatePresence>
+                      {error && (
+                        <motion.p
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          className="text-sm font-medium text-red-500 text-center pt-2"
+                          aria-live="polite"
+                        >
+                          {error}
+                        </motion.p>
+                      )}
+                    </AnimatePresence>
+                    {/* --- ▲▲▲ エラーメッセージ表示を追加 ▲▲▲ --- */}
                   </div>
                 </div>
                 <motion.div
@@ -862,20 +861,22 @@ export default function WelcomeScreen() {
             <CardFooter className="relative z-10">
               <motion.div
                 className="w-full"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+                whileHover={{ scale: !isLoading ? 1.02 : 1 }}
+                whileTap={{ scale: !isLoading ? 0.98 : 1 }}
               >
                 <Button
                   className="w-full relative overflow-hidden rounded-xl py-6 font-sans text-white font-semibold text-lg transition-all duration-300 shadow-lg hover:shadow-2xl group"
                   onClick={handleSubmit}
-                  disabled={!username.trim()}
+                  disabled={!username.trim() || isLoading}
                   style={{
-                    background: username.trim()
-                      ? "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)"
-                      : "linear-gradient(135deg, #94a3b8 0%, #cbd5e1 100%)",
-                    boxShadow: username.trim()
-                      ? "0 4px 20px rgba(59, 130, 246, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.2)"
-                      : "0 2px 10px rgba(0, 0, 0, 0.1)",
+                    background:
+                      !username.trim() || isLoading
+                        ? "linear-gradient(135deg, #94a3b8 0%, #cbd5e1 100%)"
+                        : "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)",
+                    boxShadow:
+                      !username.trim() || isLoading
+                        ? "0 2px 10px rgba(0, 0, 0, 0.1)"
+                        : "0 4px 20px rgba(59, 130, 246, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.2)",
                   }}
                 >
                   <motion.div
@@ -889,8 +890,10 @@ export default function WelcomeScreen() {
                     }}
                   />
                   <span className="relative z-10 flex items-center justify-center gap-2">
-                    飛び込む
-                    <Zap className="w-4 h-4 transition-all duration-300 group-hover:translate-x-1 group-hover:text-yellow-300" />
+                    {isLoading ? "確認中..." : "飛び込む"}
+                    {!isLoading && (
+                      <Zap className="w-4 h-4 transition-all duration-300 group-hover:translate-x-1 group-hover:text-yellow-300" />
+                    )}
                   </span>
                 </Button>
               </motion.div>

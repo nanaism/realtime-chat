@@ -46,6 +46,38 @@ app.prepare().then(() => {
   io.on("connection", (socket) => {
     console.log(`接続確立: ${socket.id}`);
 
+    // --- ▼▼▼ ここから追加 ▼▼▼ ---
+    /**
+     * ユーザー名が利用可能かチェックする。
+     * acknowledgement (ack) を使用して、問い合わせてきたクライアントにのみ結果を返す。
+     * これにより、サーバー側でアトミックに（不可分に）チェックが行われ、
+     * 同時登録のレースコンディションを防ぐ。
+     * @param {string} username - チェックしたいユーザー名
+     * @param {function} callback - 結果を返すためのコールバック関数
+     */
+    socket.on("user:check_name", (username, callback) => {
+      // 現在のユーザーリストから同じ名前のユーザーを探す
+      const existingUser = Array.from(users.values()).find(
+        (u) => u.name === username
+      );
+
+      if (existingUser) {
+        // 名前が既に使用されている場合
+        console.log(`名前チェック: "${username}" は使用不可`);
+        callback({
+          available: false,
+          message: "この表示名は既に使用されています。",
+        });
+      } else {
+        // 名前が利用可能な場合
+        console.log(`名前チェック: "${username}" は使用可能`);
+        callback({
+          available: true,
+        });
+      }
+    });
+    // --- ▲▲▲ ここまで追加 ▲▲▲ ---
+
     // ユーザーがログインした際の処理
     socket.on("user:login", (userData) => {
       console.log("ログインデータ受信:", userData);
