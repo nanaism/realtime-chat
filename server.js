@@ -53,30 +53,42 @@ app.prepare().then(() => {
       }
     });
 
+    // ▼▼▼ user:login のロジックを修正 ▼▼▼
     socket.on("user:login", (userData) => {
       console.log("ログインデータ受信:", userData);
 
       const existingUser = Array.from(users.values()).find(
         (u) => u.name === userData.name
       );
+
+      // ★★★ 重複ユーザーの処理を変更 ★★★
       if (existingUser) {
         console.log(
-          `ユーザー "${userData.name}" が再接続しました。古い接続 (${existingUser.id}) を切断します。`
+          `ユーザー "${userData.name}" は既に接続済みです。新しい接続 (${socket.id}) を拒否します。`
         );
-        io.to(existingUser.id).disconnect();
-        users.delete(existingUser.id);
+        // 新しい接続元（このソケット）にのみエラーイベントを送信
+        socket.emit("user:login_error", {
+          message:
+            "この表示名は他のタブまたはウィンドウで既に使用されています。",
+        });
+        // この後の処理は行わず、ユーザーをリストに追加しない
+        return;
       }
 
-      console.log(
-        `履歴を送信: ${socket.id} へ ${messageHistory.length} 件のメッセージ`
-      );
-      socket.emit("chat:history", messageHistory);
+      // --- ここから下は、重複がない場合の正常な処理 ---
 
       const updatedUserData = {
         ...userData,
         id: socket.id,
       };
       users.set(socket.id, updatedUserData);
+
+      console.log(
+        `履歴を送信: ${socket.id} へ ${messageHistory.length} 件のメッセージ`
+      );
+      // ログインが成功した本人に、成功したことと履歴を送信
+      socket.emit("user:login_success", updatedUserData);
+      socket.emit("chat:history", messageHistory);
 
       // 入室メッセージを作成
       const systemMessage = {
@@ -85,19 +97,21 @@ app.prepare().then(() => {
         sender: "System",
         content: `${updatedUserData.name} が入室しました`,
         timestamp: new Date().toISOString(),
-        reactions: {}, // ◀◀◀ 変更: リアクションを初期化
+        reactions: {},
       };
 
       messageHistory.push(systemMessage);
       if (messageHistory.length > MAX_HISTORY) {
         messageHistory.shift();
       }
-      io.emit("message:new", systemMessage);
+      // 自分以外の全員に入室メッセージを送信
+      socket.broadcast.emit("message:new", systemMessage);
 
+      // 全員にユーザーリストの更新を通知
       const usersList = Array.from(users.values());
       io.emit("users:update", usersList);
 
-      console.log(`ログイン: ${updatedUserData.name} (${socket.id})`);
+      console.log(`ログイン成功: ${updatedUserData.name} (${socket.id})`);
     });
 
     socket.on("message:send", (message) => {
@@ -251,18 +265,23 @@ app.prepare().then(() => {
           sender: "System",
           content: `${userData.name} が退室しました`,
           timestamp: new Date().toISOString(),
-          reactions: {}, // ◀◀◀ 変更: リアクションを初期化
+          reactions: {},
         };
 
         messageHistory.push(systemMessage);
         if (messageHistory.length > MAX_HISTORY) {
           messageHistory.shift();
         }
+        // ★★★ 変更: 全員に退室メッセージを送信 ★★★
+        // (以前の実装だと自分自身に送れないが、disconnectなのでこれでOK)
         io.emit("message:new", systemMessage);
 
         const usersList = Array.from(users.values());
         io.emit("users:update", usersList);
         console.log(`切断: ${userData.name} (${socket.id})`);
+      } else {
+        // login前に切断された場合など
+        console.log(`切断 (ユーザー情報なし): ${socket.id}`);
       }
     });
   });

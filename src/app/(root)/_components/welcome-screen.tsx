@@ -897,7 +897,7 @@ export default function WelcomeScreen() {
                     }}
                   />
                   <span className="relative z-10 flex items-center justify-center gap-2">
-                    {isLoading ? "確認中..." : "飛び込む"}
+                    {isLoading ? "認証中..." : "飛び込む"}
                     {!isLoading && (
                       <Zap className="w-4 h-4 transition-all duration-300 group-hover:translate-x-1 group-hover:text-yellow-300" />
                     )}

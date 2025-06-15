@@ -6,6 +6,7 @@ import type {
   ServerToClientEvents,
   User,
 } from "@/lib/types"; // 修正: types.tsからインポート
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 
@@ -18,6 +19,7 @@ interface UseChatSocketProps {
  * (チャット履歴・リアクション機能付き)
  */
 export function useChatSocket({ username }: UseChatSocketProps) {
+  const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [typingUsers, setTypingUsers] = useState<
@@ -53,31 +55,44 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     // --- イベントリスナーをここでまとめて登録 ---
 
     socket.on("connect", () => {
-      const currentSocketId = socket.id;
-      if (currentSocketId) {
-        console.log("[useChatSocket] Connected with ID:", currentSocketId);
-        setCurrentUserSocketId(currentSocketId);
-        setIsSocketInitialized(true);
+      console.log("[useChatSocket] Connected with ID:", socket.id);
 
-        const newUser: Omit<User, "id"> = {
-          name: username!,
-          status: "online",
-          position: {
-            x: Math.random() * 80 + 10,
-            y: Math.random() * 80 + 10,
-          },
-          color: `hsl(${Math.random() * 360}, 70%, 70%)`,
-          avatar: `https://api.dicebear.com/7.x/notionists/svg?seed=${username}`,
-        };
-        // @ts-expect-error - 'id' はサーバー側で付与されるため、ここでは送信しない
-        socket.emit("user:login", newUser);
-      } else {
-        console.error(
-          "[useChatSocket] Socket connected but no ID was assigned."
-        );
-      }
+      const newUser: Omit<User, "id"> = {
+        name: username!,
+        status: "online",
+        position: {
+          x: Math.random() * 80 + 10,
+          y: Math.random() * 80 + 10,
+        },
+        color: `hsl(${Math.random() * 360}, 70%, 70%)`,
+        avatar: `https://api.dicebear.com/7.x/notionists/svg?seed=${username}`,
+      };
+      // 接続が確立したら、ログイン情報を送信
+      socket.emit("user:login", newUser);
     });
 
+    // ★★★ ログイン成功イベントをリッスン ★★★
+    socket.on("user:login_success", (currentUser: User) => {
+      console.log("[useChatSocket] Login successful:", currentUser);
+      setCurrentUserSocketId(currentUser.id);
+      setIsSocketInitialized(true); // ここで初期化完了とする
+    });
+
+    // ★★★ ログインエラー（重複）イベントをリッスン ★★★
+    socket.on("user:login_error", ({ message }: { message: string }) => {
+      console.error("[useChatSocket] Login failed:", message);
+
+      // ソケット接続を明示的に切断し、再接続ループを防ぐ
+      socket.disconnect();
+
+      // エラーメッセージをユーザーに通知
+      alert(message + "\nトップページに戻ります。");
+
+      // ページをリダイレクト (replaceで履歴に残さない)
+      router.replace("/");
+    });
+
+    // chat:history と users:update はそのまま
     socket.on("chat:history", (history: Message[]) => {
       console.log("[useChatSocket] Received chat history:", history);
       setMessages(history);
@@ -136,20 +151,19 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     });
 
     socket.on("disconnect", () => {
-      console.log("[useChatSocket] Disconnected. Clearing states.");
-      setIsSocketInitialized(false);
-      setCurrentUserSocketId(null);
-      setUsers([]);
-      setMessages([]);
-      setTypingUsers([]);
+      console.log("[useChatSocket] Disconnected.");
+      // ★★★ 状態リセットはlogin_errorで能動的に行うので、ここではシンプルにログ出力のみ
+      // isSocketInitialized などを false にすると、正常なタブ閉じ->再アクセスで問題が起きる可能性があるため
     });
 
     return () => {
       console.log("[useChatSocket] Cleaning up socket connection.");
-      socket.disconnect();
-      socketRef.current = null;
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
     };
-  }, [username]);
+  }, [username, router]); 
 
   const sendMessage = useCallback(
     (content: string) => {

@@ -349,9 +349,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     const storedUsername = localStorage.getItem("username");
-    if (!storedUsername) {
-      router.push("/");
-    } else {
+    if (storedUsername) {
       setUsername(storedUsername);
     }
 
@@ -361,7 +359,7 @@ export default function ChatPage() {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [router]);
+  }, []);
 
   const {
     users,
@@ -447,7 +445,7 @@ export default function ChatPage() {
     showSpaceDive;
 
   if (shouldShowLoading) {
-    // SpaceDiveLoadingコンポーネントは元のコードをそのまま使ってください
+    // 2つ目のタブは、useChatSocket内でリダイレクトされるまで、このローディング画面を表示し続ける
     return <SpaceDiveLoading onComplete={handleSpaceDiveComplete} />;
   }
 
@@ -521,7 +519,7 @@ export default function ChatPage() {
                 setInputValue={handleInputChange}
                 onSendMessage={handleSendMessage}
                 onSendReaction={sendReaction}
-                 onDeleteMessage={deleteMessage} // ◀◀◀ 追加
+                onDeleteMessage={deleteMessage} // ◀◀◀ 追加
               />
             </div>
           </div>
