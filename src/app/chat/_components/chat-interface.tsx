@@ -4,7 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { Message } from "@/lib/types";
+import type { Message } from "@/lib/types"; // 修正: types.tsからインポート
 import { formatDistanceToNow } from "date-fns";
 import { ja } from "date-fns/locale";
 import {
@@ -24,6 +24,7 @@ interface ChatInterfaceProps {
   inputValue: string;
   setInputValue: (value: string) => void;
   onSendMessage: () => void;
+  onSendReaction: (messageId: string, emoji: string) => void; // ◀◀◀ 追加
 }
 
 /**
@@ -37,11 +38,17 @@ export default function ChatInterface({
   inputValue,
   setInputValue,
   onSendMessage,
+  onSendReaction, // ◀◀◀ 追加
 }: ChatInterfaceProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isSending, setIsSending] = useState(false);
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
+
+  // ▼▼▼ ここから追加 ▼▼▼
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+  const EMOJI_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+  // ▲▲▲ ここまで追加 ▲▲▲
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -90,7 +97,9 @@ export default function ChatInterface({
       {/* チャットメッセージ表示エリア */}
       <div className="flex-1 overflow-hidden relative">
         <ScrollArea className="h-full absolute inset-0 p-4">
-          <div className="space-y-4 pb-2">
+          <div className="space-y-6 pb-2">
+            {" "}
+            {/* space-yを調整 */}
             <AnimatePresence mode="popLayout">
               {messages.map((message, index) => (
                 <motion.div
@@ -103,7 +112,11 @@ export default function ChatInterface({
                     ease: [0.23, 1, 0.32, 1],
                     delay: index * 0.05,
                   }}
-                  className="chat-message"
+                  className="chat-message relative" // ◀◀◀ 変更: relativeクラスを追加
+                  onMouseEnter={() =>
+                    message.type === "user" && setHoveredMessageId(message.id)
+                  }
+                  onMouseLeave={() => setHoveredMessageId(null)}
                 >
                   {message.type === "system" ? (
                     <motion.div
@@ -139,12 +152,10 @@ export default function ChatInterface({
                           </Avatar>
                         </motion.div>
                       )}
-                      <motion.div
+                      <div /* ◀◀◀ 変更: motion.divからdivに変更し、中に移動 */
                         className={`max-w-[80%] ${
                           message.sender === currentUser ? "order-first" : ""
                         }`}
-                        whileHover={{ scale: 1.01 }}
-                        transition={{ type: "spring", stiffness: 400 }}
                       >
                         <div className="flex items-center gap-2 mb-1.5">
                           {message.sender !== currentUser && (
@@ -159,29 +170,117 @@ export default function ChatInterface({
                             })}
                           </span>
                         </div>
-                        <motion.div
-                          className={`p-4 rounded-2xl relative overflow-hidden ${
-                            message.sender === currentUser
-                              ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white ml-auto shadow-lg shadow-blue-500/20"
-                              : "bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border border-slate-200/50 dark:border-slate-700/50 shadow-lg"
-                          }`}
-                          whileTap={{ scale: 0.98 }}
-                        >
-                          {/* メッセージ背景のグラデーション効果 */}
-                          {message.sender === currentUser && (
-                            <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-white/20 opacity-50" />
-                          )}
-                          <p
-                            className={`relative z-10 ${
-                              message.sender !== currentUser
-                                ? "text-slate-700 dark:text-slate-200"
-                                : ""
+                        <div className="relative">
+                          {" "}
+                          {/* ◀◀◀ 追加: リアクション配置のためのコンテナ */}
+                          <motion.div
+                            whileHover={{ scale: 1.01 }}
+                            whileTap={{ scale: 0.98 }}
+                            transition={{ type: "spring", stiffness: 400 }}
+                            className={`p-4 rounded-2xl relative overflow-hidden ${
+                              message.sender === currentUser
+                                ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white ml-auto shadow-lg shadow-blue-500/20"
+                                : "bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border border-slate-200/50 dark:border-slate-700/50 shadow-lg"
                             }`}
                           >
-                            {message.content}
-                          </p>
-                        </motion.div>
-                      </motion.div>
+                            {message.sender === currentUser && (
+                              <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-white/20 opacity-50" />
+                            )}
+                            <p
+                              className={`relative z-10 ${
+                                message.sender !== currentUser
+                                  ? "text-slate-700 dark:text-slate-200"
+                                  : ""
+                              }`}
+                            >
+                              {message.content}
+                            </p>
+                          </motion.div>
+                          {/* ▼▼▼ ここからリアクション表示エリアを丸ごと追加 ▼▼▼ */}
+                          <div
+                            className="absolute -bottom-5 flex gap-1 px-2"
+                            style={
+                              message.sender === currentUser
+                                ? { right: 0 }
+                                : { left: 0 }
+                            }
+                          >
+                            <AnimatePresence>
+                              {message.reactions &&
+                                Object.entries(message.reactions).map(
+                                  ([emoji, users]) =>
+                                    users.length > 0 && (
+                                      <motion.button
+                                        key={emoji}
+                                        layout
+                                        initial={{ scale: 0, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        exit={{ scale: 0, opacity: 0 }}
+                                        transition={{
+                                          type: "spring",
+                                          stiffness: 500,
+                                          damping: 30,
+                                        }}
+                                        onClick={() =>
+                                          onSendReaction(message.id, emoji)
+                                        }
+                                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs shadow-sm transition-all duration-200 ${
+                                          users.includes(currentUser)
+                                            ? "bg-blue-100 dark:bg-blue-900 border-blue-400 dark:border-blue-700"
+                                            : "bg-white/70 dark:bg-slate-700/70 backdrop-blur-sm border-slate-200/50 dark:border-slate-600/50 hover:bg-slate-100 dark:hover:bg-slate-600"
+                                        }`}
+                                      >
+                                        <span>{emoji}</span>
+                                        <span
+                                          className={`font-semibold ${
+                                            users.includes(currentUser)
+                                              ? "text-blue-600 dark:text-blue-300"
+                                              : "text-slate-600 dark:text-slate-300"
+                                          }`}
+                                        >
+                                          {users.length}
+                                        </span>
+                                      </motion.button>
+                                    )
+                                )}
+                            </AnimatePresence>
+                          </div>
+                          {/* ▲▲▲ ここまでリアクション表示エリアを追加 ▲▲▲ */}
+                          {/* ▼▼▼ ここからリアクションピッカーを丸ごと追加 ▼▼▼ */}
+                          {hoveredMessageId === message.id && (
+                            <motion.div
+                              layoutId={`reaction-picker-${message.id}`}
+                              initial={{ opacity: 0, y: 10, scale: 0.8 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 10, scale: 0.8 }}
+                              transition={{ duration: 0.15, ease: "easeOut" }}
+                              className={`absolute top-[-18px] z-20 ${
+                                message.sender === currentUser
+                                  ? "right-2"
+                                  : "left-2"
+                              } bg-white/80 dark:bg-slate-700/80 backdrop-blur-md shadow-lg rounded-full p-1 flex gap-0.5 border border-slate-200 dark:border-slate-600`}
+                            >
+                              {EMOJI_REACTIONS.map((emoji) => (
+                                <motion.button
+                                  key={emoji}
+                                  whileHover={{
+                                    scale: 1.2,
+                                    rotate: [0, -10, 10, 0],
+                                  }}
+                                  whileTap={{ scale: 0.9 }}
+                                  onClick={() =>
+                                    onSendReaction(message.id, emoji)
+                                  }
+                                  className="text-lg p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
+                                >
+                                  {emoji}
+                                </motion.button>
+                              ))}
+                            </motion.div>
+                          )}
+                          {/* ▲▲▲ ここまでリアクションピッカーを追加 ▲▲▲ */}
+                        </div>
+                      </div>
                       {message.sender === currentUser && (
                         <motion.div
                           whileHover={{ scale: 1.1, rotate: -5 }}
@@ -202,7 +301,6 @@ export default function ChatInterface({
                 </motion.div>
               ))}
             </AnimatePresence>
-
             {/* タイピング中のユーザーがいる場合にインジケーターを表示 */}
             <AnimatePresence>
               {typingUsers.length > 0 && (

@@ -1,6 +1,11 @@
 "use client";
 
-import type { Message, User } from "@/lib/types";
+import type {
+  ClientToServerEvents,
+  Message,
+  ServerToClientEvents,
+  User,
+} from "@/lib/types"; // 修正: types.tsからインポート
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 
@@ -10,7 +15,7 @@ interface UseChatSocketProps {
 
 /**
  * チャットのソケット通信を管理するカスタムフック
- * (チャット履歴機能付き)
+ * (チャット履歴・リアクション機能付き)
  */
 export function useChatSocket({ username }: UseChatSocketProps) {
   const [users, setUsers] = useState<User[]>([]);
@@ -22,7 +27,10 @@ export function useChatSocket({ username }: UseChatSocketProps) {
   const [currentUserSocketId, setCurrentUserSocketId] = useState<string | null>(
     null
   );
-  const socketRef = useRef<Socket | null>(null);
+  const socketRef = useRef<Socket<
+    ServerToClientEvents,
+    ClientToServerEvents
+  > | null>(null);
 
   useEffect(() => {
     if (!username) {
@@ -37,7 +45,9 @@ export function useChatSocket({ username }: UseChatSocketProps) {
       return;
     }
 
-    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "");
+    const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(
+      process.env.NEXT_PUBLIC_SOCKET_URL || ""
+    );
     socketRef.current = socket;
 
     // --- イベントリスナーをここでまとめて登録 ---
@@ -59,6 +69,7 @@ export function useChatSocket({ username }: UseChatSocketProps) {
           color: `hsl(${Math.random() * 360}, 70%, 70%)`,
           avatar: `https://api.dicebear.com/7.x/notionists/svg?seed=${username}`,
         };
+        // @ts-expect-error - 'id' はサーバー側で付与されるため、ここでは送信しない
         socket.emit("user:login", newUser);
       } else {
         console.error(
@@ -67,15 +78,10 @@ export function useChatSocket({ username }: UseChatSocketProps) {
       }
     });
 
-    // --- ▼▼▼ ここから追加 ▼▼▼ ---
-    // サーバーからチャット履歴を受信
     socket.on("chat:history", (history: Message[]) => {
       console.log("[useChatSocket] Received chat history:", history);
-      // 受信した履歴でメッセージのstateを初期化します。
-      // この後、新しいメッセージは 'message:new' で随時追加されていきます。
       setMessages(history);
     });
-    // --- ▲▲▲ ここまで追加 ▲▲▲ ---
 
     socket.on("users:update", (updatedUsers: User[]) => {
       console.log("[useChatSocket] Received users:update", updatedUsers);
@@ -98,6 +104,25 @@ export function useChatSocket({ username }: UseChatSocketProps) {
       });
     });
 
+    // ▼▼▼ ここからリアクション更新のリスナーを追加 ▼▼▼
+    socket.on(
+      "reaction:update",
+      ({
+        messageId,
+        reactions,
+      }: {
+        messageId: string;
+        reactions: Message["reactions"];
+      }) => {
+        setMessages((prevMessages) =>
+          prevMessages.map((msg) =>
+            msg.id === messageId ? { ...msg, reactions } : msg
+          )
+        );
+      }
+    );
+    // ▲▲▲ ここまで追加 ▲▲▲
+
     socket.on("disconnect", () => {
       console.log("[useChatSocket] Disconnected. Clearing states.");
       setIsSocketInitialized(false);
@@ -118,7 +143,7 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     (content: string) => {
       if (!content.trim() || !username || !socketRef.current) return;
 
-      const newMessage: Omit<Message, "id"> = {
+      const newMessage: Omit<Message, "id" | "reactions"> = {
         type: "user",
         sender: username,
         content: content,
@@ -138,6 +163,12 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     socketRef.current?.emit("user:move", newPosition);
   }, []);
 
+  // ▼▼▼ ここからリアクション送信用の関数を追加 ▼▼▼
+  const sendReaction = useCallback((messageId: string, emoji: string) => {
+    socketRef.current?.emit("reaction:add", { messageId, emoji });
+  }, []);
+  // ▲▲▲ ここまで追加 ▲▲▲
+
   const logout = useCallback(() => {
     socketRef.current?.disconnect();
   }, []);
@@ -153,6 +184,7 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     sendMessage,
     sendTypingUpdate,
     sendUserMove,
+    sendReaction, // ◀◀◀ 追加
     logout,
   };
 }

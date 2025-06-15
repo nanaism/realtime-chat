@@ -3,7 +3,7 @@
  *
  * このモジュールは、Next.jsアプリケーションを提供し、Socket.IOを統合して
  * リアルタイム通信機能（チャット、ユーザー状態同期など）を実現します。
- * チャット履歴機能も備えています。
+ * チャット履歴機能とリアクション機能も備えています。
  */
 import next from "next";
 import { createServer } from "node:http";
@@ -18,12 +18,10 @@ const handle = app.getRequestHandler();
 // 接続中のユーザー情報を保持するMapオブジェクト
 const users = new Map();
 
-// --- ▼▼▼ ここから追加 ▼▼▼ ---
 // チャット履歴を保持する配列
 const messageHistory = [];
 // メモリを圧迫しないよう、保持する履歴の最大数を設定 (例: 100件)
 const MAX_HISTORY = 10000;
-// --- ▲▲▲ ここまで追加 ▲▲▲ ---
 
 app.prepare().then(() => {
   const server = createServer((req, res) => {
@@ -69,14 +67,10 @@ app.prepare().then(() => {
         users.delete(existingUser.id);
       }
 
-      // --- ▼▼▼ ここから追加 ▼▼▼ ---
-      // ログインしたユーザーに現在のチャット履歴を送信する
-      // `socket.emit` は、このイベントをトリガーしたクライアントにのみ送信します。
       console.log(
         `履歴を送信: ${socket.id} へ ${messageHistory.length} 件のメッセージ`
       );
       socket.emit("chat:history", messageHistory);
-      // --- ▲▲▲ ここまで追加 ▲▲▲ ---
 
       const updatedUserData = {
         ...userData,
@@ -88,19 +82,17 @@ app.prepare().then(() => {
       const systemMessage = {
         id: `msg-${Date.now()}`,
         type: "system",
+        sender: "System",
         content: `${updatedUserData.name} が入室しました`,
         timestamp: new Date().toISOString(),
+        reactions: {}, // ◀◀◀ 変更: リアクションを初期化
       };
 
-      // --- ▼▼▼ ここから修正 ▼▼▼ ---
-      // メッセージを履歴に追加し、上限を超えたら古いものを削除
       messageHistory.push(systemMessage);
       if (messageHistory.length > MAX_HISTORY) {
         messageHistory.shift();
       }
-      // 全員に新しい入室メッセージを通知
       io.emit("message:new", systemMessage);
-      // --- ▲▲▲ ここまで修正 ▲▲▲ ---
 
       const usersList = Array.from(users.values());
       io.emit("users:update", usersList);
@@ -112,20 +104,60 @@ app.prepare().then(() => {
       const messageWithId = {
         ...message,
         id: `msg-${Date.now()}`,
+        reactions: {}, // ◀◀◀ 変更: リアクションを初期化
       };
 
-      // --- ▼▼▼ ここから修正 ▼▼▼ ---
-      // メッセージを履歴に追加し、上限を超えたら古いものを削除
       messageHistory.push(messageWithId);
       if (messageHistory.length > MAX_HISTORY) {
         messageHistory.shift();
       }
-      // 全員に新しいメッセージを通知
       io.emit("message:new", messageWithId);
-      // --- ▲▲▲ ここまで修正 ▲▲▲ ---
 
       console.log(`メッセージ: ${message.content} from ${message.sender}`);
     });
+
+    // ▼▼▼ ここからリアクション処理のロジックを丸ごと追加 ▼▼▼
+    socket.on("reaction:add", ({ messageId, emoji }) => {
+      const user = users.get(socket.id);
+      if (!user) return;
+
+      const message = messageHistory.find((m) => m.id === messageId);
+      if (!message) return;
+
+      // reactions オブジェクトがなければ初期化
+      if (!message.reactions) {
+        message.reactions = {};
+      }
+      // 絵文字キーがなければ初期化
+      if (!message.reactions[emoji]) {
+        message.reactions[emoji] = [];
+      }
+
+      const userIndex = message.reactions[emoji].indexOf(user.name);
+
+      if (userIndex > -1) {
+        // ユーザーが既にリアクションしていれば、削除（トグル）
+        message.reactions[emoji].splice(userIndex, 1);
+        // リアクションしたユーザーがいなくなったら、絵文字キー自体を削除
+        if (message.reactions[emoji].length === 0) {
+          delete message.reactions[emoji];
+        }
+      } else {
+        // ユーザーがまだリアクションしていなければ、追加
+        message.reactions[emoji].push(user.name);
+      }
+
+      console.log(
+        `Reaction update: ${user.name} reacted with ${emoji} to message ${messageId}`
+      );
+
+      // 全クライアントに更新情報をブロードキャスト
+      io.emit("reaction:update", {
+        messageId: messageId,
+        reactions: message.reactions,
+      });
+    });
+    // ▲▲▲ ここまで追加 ▲▲▲
 
     socket.on("user:move", (position) => {
       const userData = users.get(socket.id);
@@ -157,19 +189,17 @@ app.prepare().then(() => {
         const systemMessage = {
           id: `msg-${Date.now()}`,
           type: "system",
+          sender: "System",
           content: `${userData.name} が退室しました`,
           timestamp: new Date().toISOString(),
+          reactions: {}, // ◀◀◀ 変更: リアクションを初期化
         };
 
-        // --- ▼▼▼ ここから修正 ▼▼▼ ---
-        // メッセージを履歴に追加し、上限を超えたら古いものを削除
         messageHistory.push(systemMessage);
         if (messageHistory.length > MAX_HISTORY) {
           messageHistory.shift();
         }
-        // 全員に退室メッセージを通知
         io.emit("message:new", systemMessage);
-        // --- ▲▲▲ ここまで修正 ▲▲▲ ---
 
         const usersList = Array.from(users.values());
         io.emit("users:update", usersList);

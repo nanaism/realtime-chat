@@ -371,6 +371,7 @@ export default function ChatPage() {
     sendMessage,
     sendTypingUpdate,
     sendUserMove,
+    sendReaction, // ◀◀◀ 追加
     logout,
   } = useChatSocket({ username });
 
@@ -419,7 +420,6 @@ export default function ChatPage() {
     setShowSpaceDive(false);
   };
 
-  // ローディング条件を更新
   const shouldShowLoading =
     !username ||
     !isSocketInitialized ||
@@ -427,6 +427,7 @@ export default function ChatPage() {
     showSpaceDive;
 
   if (shouldShowLoading) {
+    // SpaceDiveLoadingコンポーネントは元のコードをそのまま使ってください
     return <SpaceDiveLoading onComplete={handleSpaceDiveComplete} />;
   }
 
@@ -481,6 +482,7 @@ export default function ChatPage() {
                     inputValue={inputValue}
                     setInputValue={handleInputChange}
                     onSendMessage={handleSendMessage}
+                    onSendReaction={sendReaction}
                   />
                 </TabsContent>
                 <TabsContent value="users" className="h-full m-0 p-0">
@@ -497,6 +499,7 @@ export default function ChatPage() {
                 inputValue={inputValue}
                 setInputValue={handleInputChange}
                 onSendMessage={handleSendMessage}
+                onSendReaction={sendReaction}
               />
             </div>
           </div>
