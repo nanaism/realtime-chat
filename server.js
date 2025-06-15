@@ -1,109 +1,82 @@
-// server.js (修正後)
-
 /**
  * Next.jsカスタムサーバー兼Socket.IOサーバー
  *
  * このモジュールは、Next.jsアプリケーションを提供し、Socket.IOを統合して
  * リアルタイム通信機能（チャット、ユーザー状態同期など）を実現します。
+ * チャット履歴機能も備えています。
  */
 import next from "next";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 
 const dev = process.env.NODE_ENV !== "production";
-// App Engineから指定されるポート、なければ開発用に3000を使用
 const port = process.env.PORT || 3000;
 
-// Next.jsアプリケーションの初期化
-// App Engine上ではホスト名を指定しない
 const app = next({ dev });
 const handle = app.getRequestHandler();
 
 // 接続中のユーザー情報を保持するMapオブジェクト
-// キー: socket.id, 値: ユーザー情報 (User型オブジェクト)
 const users = new Map();
 
+// --- ▼▼▼ ここから追加 ▼▼▼ ---
+// チャット履歴を保持する配列
+const messageHistory = [];
+// メモリを圧迫しないよう、保持する履歴の最大数を設定 (例: 100件)
+const MAX_HISTORY = 10000;
+// --- ▲▲▲ ここまで追加 ▲▲▲ ---
+
 app.prepare().then(() => {
-  // ★ 変更点: Next.jsのハンドラーをcreateServerに直接渡すのではなく、
-  // リクエストをパースして渡す、より標準的な方法に変更します。
   const server = createServer((req, res) => {
-    // URLをパースしてNext.jsに処理を委譲
     handle(req, res);
   });
 
-  const io = new Server(server, {
-    // 必要に応じてSocket.IOのオプションをここに記述
-  });
+  const io = new Server(server);
 
-  // --- ここから下のSocket.IO関連のロジックは変更ありません ---
-
-  // デバッグ用：接続状態の監視
   io.engine.on("connection_error", (err) => {
     console.log("Connection error:", err);
   });
 
-  // Socket.IO接続ハンドラー
   io.on("connection", (socket) => {
     console.log(`接続確立: ${socket.id}`);
 
-    // --- ▼▼▼ ここから追加 ▼▼▼ ---
-    /**
-     * ユーザー名が利用可能かチェックする。
-     * acknowledgement (ack) を使用して、問い合わせてきたクライアントにのみ結果を返す。
-     * これにより、サーバー側でアトミックに（不可分に）チェックが行われ、
-     * 同時登録のレースコンディションを防ぐ。
-     * @param {string} username - チェックしたいユーザー名
-     * @param {function} callback - 結果を返すためのコールバック関数
-     */
     socket.on("user:check_name", (username, callback) => {
-      // 現在のユーザーリストから同じ名前のユーザーを探す
       const existingUser = Array.from(users.values()).find(
         (u) => u.name === username
       );
-
       if (existingUser) {
-        // 名前が既に使用されている場合
-        console.log(`名前チェック: "${username}" は使用不可`);
         callback({
           available: false,
           message: "この表示名は既に使用されています。",
         });
       } else {
-        // 名前が利用可能な場合
-        console.log(`名前チェック: "${username}" は使用可能`);
         callback({
           available: true,
         });
       }
     });
-    // --- ▲▲▲ ここまで追加 ▲▲▲ ---
 
-    // ユーザーがログインした際の処理
     socket.on("user:login", (userData) => {
       console.log("ログインデータ受信:", userData);
 
-      // ★★★ ここから修正 ★★★
-
-      // 1. 既に同じ名前のユーザーがいないかチェックする
       const existingUser = Array.from(users.values()).find(
         (u) => u.name === userData.name
       );
-
       if (existingUser) {
-        // --- オプション1: 古い接続を切断する（より親切）---
         console.log(
           `ユーザー "${userData.name}" が再接続しました。古い接続 (${existingUser.id}) を切断します。`
         );
-        // 古いユーザーのソケットを見つけて切断
         io.to(existingUser.id).disconnect();
-        // users Mapから古いユーザーを削除
         users.delete(existingUser.id);
-
-        // --- オプション2: 新しいログインを拒否する（シンプル）---
-        // console.log(`ログイン拒否: ユーザー "${userData.name}" はすでに存在します。`);
-        // socket.emit('login:error', { message: 'この名前は既に使用されています。' });
-        // return; // 処理を中断
       }
+
+      // --- ▼▼▼ ここから追加 ▼▼▼ ---
+      // ログインしたユーザーに現在のチャット履歴を送信する
+      // `socket.emit` は、このイベントをトリガーしたクライアントにのみ送信します。
+      console.log(
+        `履歴を送信: ${socket.id} へ ${messageHistory.length} 件のメッセージ`
+      );
+      socket.emit("chat:history", messageHistory);
+      // --- ▲▲▲ ここまで追加 ▲▲▲ ---
 
       const updatedUserData = {
         ...userData,
@@ -111,32 +84,49 @@ app.prepare().then(() => {
       };
       users.set(socket.id, updatedUserData);
 
-      io.emit("message:new", {
+      // 入室メッセージを作成
+      const systemMessage = {
         id: `msg-${Date.now()}`,
         type: "system",
         content: `${updatedUserData.name} が入室しました`,
         timestamp: new Date().toISOString(),
-      });
+      };
+
+      // --- ▼▼▼ ここから修正 ▼▼▼ ---
+      // メッセージを履歴に追加し、上限を超えたら古いものを削除
+      messageHistory.push(systemMessage);
+      if (messageHistory.length > MAX_HISTORY) {
+        messageHistory.shift();
+      }
+      // 全員に新しい入室メッセージを通知
+      io.emit("message:new", systemMessage);
+      // --- ▲▲▲ ここまで修正 ▲▲▲ ---
 
       const usersList = Array.from(users.values());
       io.emit("users:update", usersList);
 
       console.log(`ログイン: ${updatedUserData.name} (${socket.id})`);
-      console.log(`現在のユーザー数: ${users.size}`);
-      console.log("ユーザーリスト:", usersList);
     });
 
-    // クライアントからチャットメッセージを受信した際の処理
     socket.on("message:send", (message) => {
       const messageWithId = {
         ...message,
         id: `msg-${Date.now()}`,
       };
+
+      // --- ▼▼▼ ここから修正 ▼▼▼ ---
+      // メッセージを履歴に追加し、上限を超えたら古いものを削除
+      messageHistory.push(messageWithId);
+      if (messageHistory.length > MAX_HISTORY) {
+        messageHistory.shift();
+      }
+      // 全員に新しいメッセージを通知
       io.emit("message:new", messageWithId);
+      // --- ▲▲▲ ここまで修正 ▲▲▲ ---
+
       console.log(`メッセージ: ${message.content} from ${message.sender}`);
     });
 
-    // クライアントからユーザーの位置情報更新を受信した際の処理
     socket.on("user:move", (position) => {
       const userData = users.get(socket.id);
       if (userData) {
@@ -144,15 +134,9 @@ app.prepare().then(() => {
         users.set(socket.id, userData);
         const usersList = Array.from(users.values());
         io.emit("users:update", usersList);
-        console.log(
-          `ユーザー移動: ${userData.name} to (${position.x}, ${position.y})`
-        );
-      } else {
-        console.log(`移動エラー: ユーザーが見つかりません (${socket.id})`);
       }
     });
 
-    // クライアントからタイピング状態の通知を受信した際の処理
     socket.on("user:typing", (isTyping) => {
       const userData = users.get(socket.id);
       if (userData) {
@@ -164,22 +148,32 @@ app.prepare().then(() => {
       }
     });
 
-    // クライアントとの接続が切断された際の処理
     socket.on("disconnect", () => {
       const userData = users.get(socket.id);
       if (userData) {
         users.delete(socket.id);
-        io.emit("message:new", {
+
+        // 退室メッセージを作成
+        const systemMessage = {
           id: `msg-${Date.now()}`,
           type: "system",
           content: `${userData.name} が退室しました`,
           timestamp: new Date().toISOString(),
-        });
+        };
+
+        // --- ▼▼▼ ここから修正 ▼▼▼ ---
+        // メッセージを履歴に追加し、上限を超えたら古いものを削除
+        messageHistory.push(systemMessage);
+        if (messageHistory.length > MAX_HISTORY) {
+          messageHistory.shift();
+        }
+        // 全員に退室メッセージを通知
+        io.emit("message:new", systemMessage);
+        // --- ▲▲▲ ここまで修正 ▲▲▲ ---
+
         const usersList = Array.from(users.values());
         io.emit("users:update", usersList);
         console.log(`切断: ${userData.name} (${socket.id})`);
-        console.log(`現在のユーザー数: ${users.size}`);
-        console.log("ユーザーリスト:", usersList);
       }
     });
   });
@@ -189,9 +183,7 @@ app.prepare().then(() => {
       console.error("HTTPサーバー起動エラー:", err);
       process.exit(1);
     })
-    // ★ 変更点: ホスト名を指定せず、環境変数から取得したポートでリッスン
     .listen(port, () => {
-      // ログ出力を環境に合わせて変更
       console.log(`> Ready on http://localhost:${port}`);
     });
 });

@@ -15,7 +15,7 @@ env_variables:
 resources:
   cpu: 4
   memory_gb: 4
-  disk_size_gb: 10
+  disk_size_gb: 100
 
 automatic_scaling:
   min_num_instances: 1

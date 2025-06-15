@@ -1,4 +1,6 @@
+import { AnimatePresence, motion } from "framer-motion";
 import { throttle } from "lodash";
+import { Compass, Hand, Sparkles, X } from "lucide-react";
 import React, {
   useCallback,
   useEffect,
@@ -164,6 +166,38 @@ export default function SpaceStation({
       onUserMove(userId, newPosition);
     }, 50)
   ).current;
+
+  const cursor = useMemo(() => {
+    if (draggedUserId || isOrbitingCamera) return "grabbing";
+    return "grab";
+  }, [draggedUserId, isOrbitingCamera]);
+
+  // Tutorial state
+  const [showTutorial, setShowTutorial] = useState(true);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [hasInteracted, setHasInteracted] = useState(false);
+
+  // Auto-minimize tutorial after 10 seconds or after first interaction
+  useEffect(() => {
+    if (hasInteracted) {
+      const timer = setTimeout(() => {
+        setIsMinimized(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    } else {
+      const timer = setTimeout(() => {
+        setIsMinimized(true);
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [hasInteracted]);
+
+  // Track first interaction
+  useEffect(() => {
+    if ((draggedUserId || isOrbitingCamera) && !hasInteracted) {
+      setHasInteracted(true);
+    }
+  }, [draggedUserId, isOrbitingCamera, hasInteracted]);
 
   // --- Three.js初期化 ---
   useEffect(() => {
@@ -817,10 +851,6 @@ export default function SpaceStation({
   const handleWheel = useCallback((event: React.WheelEvent) => {
     threeJsState.current.controls?.onMouseWheel(event.nativeEvent);
   }, []);
-  const cursor = useMemo(() => {
-    if (draggedUserId || isOrbitingCamera) return "grabbing";
-    return "grab";
-  }, [draggedUserId, isOrbitingCamera]);
 
   return (
     <div
@@ -851,6 +881,180 @@ export default function SpaceStation({
           />
         ))}
       </div>
+
+      {/* Tutorial Panel */}
+      <AnimatePresence>
+        {showTutorial && (
+          <motion.div
+            initial={{ opacity: 0, x: 100 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 100 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            className="absolute bottom-8 right-8 pointer-events-auto z-50"
+            style={{ maxWidth: "calc(100vw - 64px)" }}
+          >
+            {/* 
+              --- ▼▼▼ ここからが修正箇所です ▼▼▼ ---
+              layoutプロパティを持つ親コンテナで、サイズと形状のアニメーションを管理します。
+            */}
+            <motion.div
+              layout
+              transition={{ layout: { duration: 0.4, ease: "easeInOut" } }}
+              // isMinimized状態に応じて角の丸みをアニメーションさせます
+              style={{
+                borderRadius: isMinimized ? "9999px" : "16px",
+                overflow: "hidden", // アニメーション中にはみ出ないように
+              }}
+              className="relative shadow-2xl"
+            >
+              {/* AnimatePresenceで、最小化/最大化コンテンツの切り替えを滑らかにします */}
+              <AnimatePresence initial={false} mode="wait">
+                {isMinimized ? (
+                  <motion.div
+                    key="minimized" // AnimatePresenceが要素を識別するためのキー
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{ duration: 0.2 }}
+                    className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-600/20 to-blue-600/20 backdrop-blur-xl border border-white/10 flex items-center justify-center cursor-pointer hover:border-white/20 transition-all hover:shadow-lg hover:shadow-purple-500/20 group"
+                    onClick={() => setIsMinimized(false)}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Sparkles className="w-6 h-6 text-white/80 group-hover:text-white transition-colors" />
+                    <motion.div
+                      className="absolute inset-0 rounded-full bg-gradient-to-br from-purple-400/30 to-blue-400/30"
+                      animate={{
+                        scale: [1, 1.2, 1],
+                        opacity: [0.3, 0, 0.3],
+                      }}
+                      transition={{
+                        duration: 2,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                      }}
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="expanded" // AnimatePresenceが要素を識別するためのキー
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    // w-80クラスを追加して、コンテナの基本幅を指定します
+                    className="w-80 bg-gradient-to-br from-purple-900/20 via-blue-900/20 to-indigo-900/20 backdrop-blur-xl border border-white/10 p-6 relative"
+                  >
+                    {/* Background decoration */}
+                    <div className="absolute inset-0 opacity-30">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500 rounded-full filter blur-3xl" />
+                      <div className="absolute bottom-0 left-0 w-32 h-32 bg-blue-500 rounded-full filter blur-3xl" />
+                    </div>
+
+                    <div className="relative z-10">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <motion.div
+                            className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center"
+                            animate={{
+                              rotate: [0, 360],
+                            }}
+                            transition={{
+                              duration: 20,
+                              repeat: Infinity,
+                              ease: "linear",
+                            }}
+                          >
+                            <Sparkles className="w-4 h-4 text-white" />
+                          </motion.div>
+                          <h3 className="text-white text-lg font-semibold font-sans bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400">
+                            あそびばチュートリアル
+                          </h3>
+                        </div>
+                        <motion.button
+                          whileHover={{ scale: 1.1, rotate: 90 }}
+                          whileTap={{ scale: 0.9 }}
+                          onClick={() => setShowTutorial(false)}
+                          className="text-white/40 hover:text-white/80 transition-colors"
+                        >
+                          <X className="w-5 h-5" />
+                        </motion.button>
+                      </div>
+
+                      <div className="space-y-4">
+                        <motion.div
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.1 }} // delayを調整
+                          className="flex items-start gap-3 group"
+                        >
+                          <motion.div
+                            className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500/20 to-purple-600/20 flex items-center justify-center flex-shrink-0 group-hover:from-purple-500/30 group-hover:to-purple-600/30 transition-all"
+                            whileHover={{ scale: 1.05 }}
+                          >
+                            <Hand className="w-5 h-5 text-purple-400" />
+                          </motion.div>
+                          <div>
+                            <h4 className="text-white/90 font-medium mb-1">
+                              アバターを移動
+                            </h4>
+                            <p className="text-white/60 text-sm leading-relaxed">
+                              自分のアイコンをドラッグして、3D空間内を自由に移動できます
+                            </p>
+                          </div>
+                        </motion.div>
+
+                        <motion.div
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.2 }} // delayを調整
+                          className="flex items-start gap-3 group"
+                        >
+                          <motion.div
+                            className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500/20 to-blue-600/20 flex items-center justify-center flex-shrink-0 group-hover:from-blue-500/30 group-hover:to-blue-600/30 transition-all"
+                            whileHover={{ scale: 1.05 }}
+                          >
+                            <Compass className="w-5 h-5 text-blue-400" />
+                          </motion.div>
+                          <div>
+                            <h4 className="text-white/90 font-medium mb-1">
+                              視点を変更
+                            </h4>
+                            <p className="text-white/60 text-sm leading-relaxed">
+                              背景をドラッグして視点を回転、スクロールでズームイン/アウト
+                            </p>
+                          </div>
+                        </motion.div>
+                      </div>
+
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => setIsMinimized(true)}
+                        className="mt-4 w-full py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-sm font-medium transition-all border border-white/5 hover:border-white/10 relative overflow-hidden"
+                      >
+                        {/* Radar scanning animation */}
+                        <motion.div
+                          className="absolute top-0 h-full w-16 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                          initial={{ left: "-20%" }}
+                          animate={{ left: "120%" }}
+                          transition={{
+                            repeat: Infinity,
+                            duration: 2,
+                            ease: "linear",
+                          }}
+                        />
+                        最小化
+                      </motion.button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+            {/* --- ▲▲▲ ここまでが修正箇所です ▲▲▲ --- */}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
