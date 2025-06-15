@@ -159,6 +159,65 @@ app.prepare().then(() => {
     });
     // ▲▲▲ ここまで追加 ▲▲▲
 
+    /**
+     * 個別メッセージ削除リクエストの処理
+     */
+    socket.on("message:delete", ({ messageId }) => {
+      const user = users.get(socket.id);
+      if (!user) return; // ユーザー情報がない場合は何もしない
+
+      const messageIndex = messageHistory.findIndex((m) => m.id === messageId);
+      if (messageIndex === -1) return; // メッセージが見つからない
+
+      const messageToDelete = messageHistory[messageIndex];
+
+      // メッセージの投稿者本人か、またはシステムメッセージでないことを確認
+      if (
+        messageToDelete.type === "user" &&
+        messageToDelete.sender === user.name
+      ) {
+        // messageHistory からメッセージを削除
+        messageHistory.splice(messageIndex, 1);
+
+        // 全クライアントに削除を通知
+        io.emit("message:deleted", { messageId });
+        console.log(`メッセージ削除: ${messageId} by ${user.name}`);
+      } else {
+        // 権限がない場合（ログ出力のみ）
+        console.log(
+          `不正な削除リクエスト: ${user.name} が ${messageToDelete.sender} のメッセージ(${messageId})を削除しようとしました`
+        );
+      }
+    });
+
+    /**
+     * 全履歴削除リクエストの処理（裏コマンド用）
+     */
+    socket.on("chat:clear_history", () => {
+      const user = users.get(socket.id);
+      if (!user) return;
+
+      // 履歴を空にする
+      messageHistory.length = 0;
+
+      // 全削除を通知するシステムメッセージを作成
+      const systemMessage = {
+        id: `msg-${Date.now()}`,
+        type: "system",
+        sender: "System",
+        content: `${user.name} がチャット履歴を全削除しました。`,
+        timestamp: new Date().toISOString(),
+        reactions: {},
+      };
+
+      // 新しいシステムメッセージを履歴に追加
+      messageHistory.push(systemMessage);
+
+      // 全クライアントに履歴がクリアされたことを、新しいシステムメッセージと共に通知
+      io.emit("chat:history_cleared", systemMessage);
+      console.log(`チャット履歴が ${user.name} によって全削除されました。`);
+    });
+
     socket.on("user:move", (position) => {
       const userData = users.get(socket.id);
       if (userData) {

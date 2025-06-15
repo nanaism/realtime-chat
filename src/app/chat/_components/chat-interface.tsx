@@ -4,18 +4,30 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { Message } from "@/lib/types"; // 修正: types.tsからインポート
-import { formatDistanceToNow } from "date-fns";
-import { ja } from "date-fns/locale";
+import type { Message } from "@/lib/types";
 import {
   AnimatePresence,
   motion,
+  useAnimation,
   useMotionValue,
   useTransform,
 } from "framer-motion";
-import { Send, Sparkles } from "lucide-react";
+import { Send, Sparkles, Trash2 } from "lucide-react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
+// 時間差を日本語で表示するヘルパー関数
+const formatDistanceToNow = (date: Date): string => {
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return `${days}日前`;
+  if (hours > 0) return `${hours}時間前`;
+  if (minutes > 0) return `${minutes}分前`;
+  return "たった今";
+};
 
 interface ChatInterfaceProps {
   messages: Message[];
@@ -24,13 +36,103 @@ interface ChatInterfaceProps {
   inputValue: string;
   setInputValue: (value: string) => void;
   onSendMessage: () => void;
-  onSendReaction: (messageId: string, emoji: string) => void; // ◀◀◀ 追加
+  onSendReaction: (messageId: string, emoji: string) => void;
+  onDeleteMessage: (messageId: string) => void;
 }
 
-/**
- * チャットインターフェースのメインコンポーネント
- * メッセージリスト、入力フィールド、送信ボタンなど、チャット機能の主要なUI要素を表示します。
- */
+// パーティクルコンポーネント
+const ParticleEffect = ({
+  x,
+  y,
+  emoji,
+}: {
+  x: number;
+  y: number;
+  emoji: string;
+}) => {
+  const controls = useAnimation();
+
+  useEffect(() => {
+    controls.start({
+      y: [0, -100],
+      opacity: [1, 0],
+      scale: [0, 1.5, 0],
+      // [修正点] アニメーション速度を倍速に (1s -> 0.5s)
+      transition: { duration: 0.5, ease: "easeOut" },
+    });
+  }, [controls]);
+
+  return (
+    <motion.div
+      className="absolute pointer-events-none z-50"
+      style={{ left: x, top: y }}
+      animate={controls}
+    >
+      <span className="text-2xl">{emoji}</span>
+    </motion.div>
+  );
+};
+
+// 削除確認モーダル
+const DeleteConfirmation = ({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+}) => {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.8, filter: "blur(10px)" }}
+      animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+      exit={{ opacity: 0, scale: 0.8, filter: "blur(10px)" }}
+      className="absolute inset-0 flex items-center justify-center z-50"
+    >
+      <motion.div
+        className="bg-black/20 backdrop-blur-md absolute inset-0"
+        onClick={onCancel}
+      />
+      <motion.div
+        className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-white/20 relative z-10 w-80 max-w-[90vw]"
+        layoutId="delete-modal"
+      >
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.1, type: "spring", stiffness: 500 }}
+          className="w-16 h-16 bg-gradient-to-br from-red-500 to-pink-500 rounded-full mx-auto mb-4 flex items-center justify-center"
+        >
+          <Trash2 className="w-8 h-8 text-white" />
+        </motion.div>
+        <h3 className="text-lg font-bold font-sans text-center mb-2 bg-gradient-to-r from-red-500 to-pink-500 bg-clip-text text-transparent whitespace-nowrap">
+          メッセージを削除しますか？
+        </h3>
+        <p className="text-sm font-sans text-slate-600 dark:text-slate-400 text-center mb-6">
+          この操作は取り消せません
+        </p>
+        <div className="flex gap-3">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={onCancel}
+            className="flex-1 px-4 py-2 rounded-xl font-sans bg-slate-200/50 dark:bg-slate-700/50 backdrop-blur-sm hover:bg-slate-300/50 dark:hover:bg-slate-600/50 transition-colors"
+          >
+            キャンセル
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={onConfirm}
+            className="flex-1 px-4 py-2 rounded-xl font-sans bg-gradient-to-r from-red-500 to-pink-500 text-white shadow-lg shadow-red-500/25 whitespace-nowrap"
+          >
+            削除
+          </motion.button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 export default function ChatInterface({
   messages,
   typingUsers,
@@ -38,17 +140,30 @@ export default function ChatInterface({
   inputValue,
   setInputValue,
   onSendMessage,
-  onSendReaction, // ◀◀◀ 追加
+  onSendReaction,
+  onDeleteMessage,
 }: ChatInterfaceProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isSending, setIsSending] = useState(false);
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
-
-  // ▼▼▼ ここから追加 ▼▼▼
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+  const [particles, setParticles] = useState<
+    Array<{ id: string; x: number; y: number; emoji: string }>
+  >([]);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [selectedEmoji, setSelectedEmoji] = useState<string | null>(null);
+
   const EMOJI_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
-  // ▲▲▲ ここまで追加 ▲▲▲
+  // [修正点] TypeScriptエラーを解消するため、Record<string, string> 型を指定
+  const EMOJI_COLORS: Record<string, string> = {
+    "👍": "from-blue-400 to-blue-600",
+    "❤️": "from-red-400 to-pink-600",
+    "😂": "from-yellow-400 to-orange-500",
+    "😮": "from-purple-400 to-violet-600",
+    "😢": "from-cyan-400 to-blue-500",
+    "🙏": "from-amber-400 to-yellow-500",
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -71,6 +186,34 @@ export default function ChatInterface({
     mouseY.set(e.clientY - rect.top);
   };
 
+  const handleReaction = (
+    messageId: string,
+    emoji: string,
+    event: React.MouseEvent
+  ) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const id = `particle-${Date.now()}`;
+    setParticles((prev) => [...prev, { id, x: rect.left, y: rect.top, emoji }]);
+    onSendReaction(messageId, emoji);
+    setSelectedEmoji(emoji);
+    setTimeout(() => setSelectedEmoji(null), 500);
+    // [修正点] アニメーション速度に合わせてパーティクルの消去時間を調整 (1000ms -> 500ms)
+    setTimeout(() => {
+      setParticles((prev) => prev.filter((p) => p.id !== id));
+    }, 500);
+  };
+
+  const handleDeleteClick = (messageId: string) => {
+    setDeleteConfirmId(messageId);
+  };
+
+  const confirmDelete = () => {
+    if (deleteConfirmId) {
+      onDeleteMessage(deleteConfirmId);
+      setDeleteConfirmId(null);
+    }
+  };
+
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -82,6 +225,28 @@ export default function ChatInterface({
       className="flex flex-col h-full relative overflow-hidden"
       onMouseMove={handleMouseMove}
     >
+      {/* パーティクルレイヤー */}
+      <AnimatePresence>
+        {particles.map((particle) => (
+          <ParticleEffect
+            key={particle.id}
+            x={particle.x}
+            y={particle.y}
+            emoji={particle.emoji}
+          />
+        ))}
+      </AnimatePresence>
+
+      {/* 削除確認モーダル */}
+      <AnimatePresence>
+        {deleteConfirmId && (
+          <DeleteConfirmation
+            onConfirm={confirmDelete}
+            onCancel={() => setDeleteConfirmId(null)}
+          />
+        )}
+      </AnimatePresence>
+
       {/* 背景グラデーションエフェクト */}
       <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50/20 to-violet-50/20 dark:from-slate-950 dark:via-blue-950/20 dark:to-violet-950/20 -z-10" />
 
@@ -98,21 +263,19 @@ export default function ChatInterface({
       <div className="flex-1 overflow-hidden relative">
         <ScrollArea className="h-full absolute inset-0 p-4">
           <div className="space-y-6 pb-2">
-            {" "}
-            {/* space-yを調整 */}
             <AnimatePresence mode="popLayout">
-              {messages.map((message, index) => (
+              {messages.map((message) => (
                 <motion.div
                   key={message.id}
+                  layout
                   initial={{ opacity: 0, y: 20, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
+                  exit={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
                   transition={{
                     duration: 0.4,
                     ease: [0.23, 1, 0.32, 1],
-                    delay: index * 0.05,
                   }}
-                  className="chat-message relative" // ◀◀◀ 変更: relativeクラスを追加
+                  className="chat-message relative"
                   onMouseEnter={() =>
                     message.type === "user" && setHoveredMessageId(message.id)
                   }
@@ -152,7 +315,7 @@ export default function ChatInterface({
                           </Avatar>
                         </motion.div>
                       )}
-                      <div /* ◀◀◀ 変更: motion.divからdivに変更し、中に移動 */
+                      <div
                         className={`max-w-[80%] ${
                           message.sender === currentUser ? "order-first" : ""
                         }`}
@@ -164,15 +327,10 @@ export default function ChatInterface({
                             </span>
                           )}
                           <span className="text-xs text-slate-400 dark:text-slate-500">
-                            {formatDistanceToNow(new Date(message.timestamp), {
-                              addSuffix: true,
-                              locale: ja,
-                            })}
+                            {formatDistanceToNow(new Date(message.timestamp))}
                           </span>
                         </div>
                         <div className="relative">
-                          {" "}
-                          {/* ◀◀◀ 追加: リアクション配置のためのコンテナ */}
                           <motion.div
                             whileHover={{ scale: 1.01 }}
                             whileTap={{ scale: 0.98 }}
@@ -196,9 +354,10 @@ export default function ChatInterface({
                               {message.content}
                             </p>
                           </motion.div>
-                          {/* ▼▼▼ ここからリアクション表示エリアを丸ごと追加 ▼▼▼ */}
+
+                          {/* リアクションバッジ */}
                           <div
-                            className="absolute -bottom-5 flex gap-1 px-2"
+                            className="absolute -bottom-6 flex gap-1.5 px-2"
                             style={
                               message.sender === currentUser
                                 ? { right: 0 }
@@ -213,72 +372,240 @@ export default function ChatInterface({
                                       <motion.button
                                         key={emoji}
                                         layout
-                                        initial={{ scale: 0, opacity: 0 }}
-                                        animate={{ scale: 1, opacity: 1 }}
-                                        exit={{ scale: 0, opacity: 0 }}
+                                        initial={{
+                                          scale: 0,
+                                          opacity: 0,
+                                          y: -10,
+                                        }}
+                                        animate={{ scale: 1, opacity: 1, y: 0 }}
+                                        exit={{ scale: 0, opacity: 0, y: -10 }}
+                                        whileHover={{ scale: 1.1, y: -2 }}
+                                        whileTap={{ scale: 0.9 }}
                                         transition={{
                                           type: "spring",
                                           stiffness: 500,
-                                          damping: 30,
+                                          damping: 20,
                                         }}
-                                        onClick={() =>
-                                          onSendReaction(message.id, emoji)
+                                        onClick={(e) =>
+                                          handleReaction(message.id, emoji, e)
                                         }
-                                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs shadow-sm transition-all duration-200 ${
+                                        className={`group relative flex items-center gap-1.5 px-3 py-1 rounded-full border text-sm shadow-md transition-all duration-300 ${
                                           users.includes(currentUser)
-                                            ? "bg-blue-100 dark:bg-blue-900 border-blue-400 dark:border-blue-700"
-                                            : "bg-white/70 dark:bg-slate-700/70 backdrop-blur-sm border-slate-200/50 dark:border-slate-600/50 hover:bg-slate-100 dark:hover:bg-slate-600"
+                                            ? `bg-gradient-to-r ${
+                                                EMOJI_COLORS[emoji] ||
+                                                "from-blue-400 to-blue-600"
+                                              } text-white border-transparent`
+                                            : "bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl border-slate-200/50 dark:border-slate-600/50 hover:border-blue-400/50"
                                         }`}
                                       >
-                                        <span>{emoji}</span>
+                                        <motion.span
+                                          className="text-base"
+                                          animate={
+                                            selectedEmoji === emoji
+                                              ? {
+                                                  rotate: [
+                                                    0, -10, 10, -10, 10, 0,
+                                                  ],
+                                                  scale: [1, 1.2, 1],
+                                                }
+                                              : {}
+                                          }
+                                          transition={{ duration: 0.5 }}
+                                        >
+                                          {emoji}
+                                        </motion.span>
                                         <span
-                                          className={`font-semibold ${
+                                          className={`font-semibold text-xs ${
                                             users.includes(currentUser)
-                                              ? "text-blue-600 dark:text-blue-300"
+                                              ? "text-white"
                                               : "text-slate-600 dark:text-slate-300"
                                           }`}
                                         >
                                           {users.length}
                                         </span>
+
+                                        {/* ホバー時のツールチップ */}
+                                        <motion.div
+                                          initial={{ opacity: 0, y: 5 }}
+                                          whileHover={{ opacity: 1, y: 0 }}
+                                          className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-slate-900/90 text-white text-xs rounded-lg backdrop-blur-sm whitespace-nowrap pointer-events-none"
+                                        >
+                                          {users.join(", ")}
+                                        </motion.div>
                                       </motion.button>
                                     )
                                 )}
                             </AnimatePresence>
                           </div>
-                          {/* ▲▲▲ ここまでリアクション表示エリアを追加 ▲▲▲ */}
-                          {/* ▼▼▼ ここからリアクションピッカーを丸ごと追加 ▼▼▼ */}
-                          {hoveredMessageId === message.id && (
-                            <motion.div
-                              layoutId={`reaction-picker-${message.id}`}
-                              initial={{ opacity: 0, y: 10, scale: 0.8 }}
-                              animate={{ opacity: 1, y: 0, scale: 1 }}
-                              exit={{ opacity: 0, y: 10, scale: 0.8 }}
-                              transition={{ duration: 0.15, ease: "easeOut" }}
-                              className={`absolute top-[-18px] z-20 ${
-                                message.sender === currentUser
-                                  ? "right-2"
-                                  : "left-2"
-                              } bg-white/80 dark:bg-slate-700/80 backdrop-blur-md shadow-lg rounded-full p-1 flex gap-0.5 border border-slate-200 dark:border-slate-600`}
-                            >
-                              {EMOJI_REACTIONS.map((emoji) => (
-                                <motion.button
-                                  key={emoji}
-                                  whileHover={{
-                                    scale: 1.2,
-                                    rotate: [0, -10, 10, 0],
-                                  }}
-                                  whileTap={{ scale: 0.9 }}
-                                  onClick={() =>
-                                    onSendReaction(message.id, emoji)
-                                  }
-                                  className="text-lg p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
-                                >
-                                  {emoji}
-                                </motion.button>
-                              ))}
-                            </motion.div>
-                          )}
-                          {/* ▲▲▲ ここまでリアクションピッカーを追加 ▲▲▲ */}
+
+                          {/* ホバー時のアクションパネル */}
+                          <AnimatePresence>
+                            {hoveredMessageId === message.id && (
+                              <motion.div
+                                initial={{
+                                  opacity: 0,
+                                  y: 10,
+                                  scale: 0.8,
+                                  filter: "blur(4px)",
+                                }}
+                                animate={{
+                                  opacity: 1,
+                                  y: 0,
+                                  scale: 1,
+                                  filter: "blur(0px)",
+                                }}
+                                exit={{
+                                  opacity: 0,
+                                  y: 10,
+                                  scale: 0.8,
+                                  filter: "blur(4px)",
+                                }}
+                                transition={{
+                                  duration: 0.2,
+                                  ease: "easeOut",
+                                }}
+                                className={`absolute top-[-35px] z-20 ${
+                                  message.sender === currentUser
+                                    ? "right-2"
+                                    : "left-2"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  {/* 3Dリアクションピッカー */}
+                                  <motion.div
+                                    className="relative"
+                                    initial={{ rotateX: -20 }}
+                                    animate={{ rotateX: 0 }}
+                                    transition={{ duration: 0.3 }}
+                                    style={{ transformStyle: "preserve-3d" }}
+                                  >
+                                    <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-2xl shadow-2xl rounded-2xl p-2 flex gap-1 border border-slate-200/50 dark:border-slate-600/50">
+                                      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 rounded-2xl" />
+                                      {/* [修正点] 既リアクションのスタイルと無効化 */}
+                                      {EMOJI_REACTIONS.map((emoji, index) => {
+                                        const hasReacted =
+                                          message.reactions?.[emoji]?.includes(
+                                            currentUser
+                                          );
+                                        return (
+                                          <motion.button
+                                            key={emoji}
+                                            initial={{
+                                              opacity: 0,
+                                              scale: 0,
+                                            }}
+                                            animate={{
+                                              opacity: 1,
+                                              scale: 1,
+                                              transition: {
+                                                delay: index * 0.03,
+                                              },
+                                            }}
+                                            whileHover={
+                                              !hasReacted
+                                                ? {
+                                                    scale: 1.3,
+                                                    rotate: [0, -15, 15, 0],
+                                                    y: -5,
+                                                    transition: {
+                                                      duration: 0.3,
+                                                    },
+                                                  }
+                                                : {}
+                                            }
+                                            whileTap={
+                                              !hasReacted ? { scale: 0.8 } : {}
+                                            }
+                                            onClick={(e) =>
+                                              handleReaction(
+                                                message.id,
+                                                emoji,
+                                                e
+                                              )
+                                            }
+                                            disabled={hasReacted}
+                                            className={`relative w-10 h-10 rounded-xl flex items-center justify-center group transition-all duration-300 ${
+                                              hasReacted
+                                                ? "opacity-50 grayscale"
+                                                : "hover:bg-gradient-to-br hover:from-slate-100/50 hover:to-slate-200/50 dark:hover:from-slate-700/50 dark:hover:to-slate-600/50"
+                                            }`}
+                                          >
+                                            <span className="text-xl group-hover:drop-shadow-lg transition-all">
+                                              {emoji}
+                                            </span>
+                                            <motion.div
+                                              className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-400/0 via-purple-400/0 to-pink-400/0 group-hover:from-blue-400/20 group-hover:via-purple-400/20 group-hover:to-pink-400/20"
+                                              initial={{ opacity: 0 }}
+                                              whileHover={
+                                                !hasReacted
+                                                  ? { opacity: 1 }
+                                                  : { opacity: 0 }
+                                              }
+                                            />
+                                          </motion.button>
+                                        );
+                                      })}
+                                    </div>
+                                  </motion.div>
+
+                                  {/* 削除ボタン (自分のメッセージの場合のみ) */}
+                                  {message.sender === currentUser && (
+                                    <motion.button
+                                      initial={{
+                                        opacity: 0,
+                                        scale: 0,
+                                        rotate: -180,
+                                      }}
+                                      animate={{
+                                        opacity: 1,
+                                        scale: 1,
+                                        rotate: 0,
+                                      }}
+                                      exit={{
+                                        opacity: 0,
+                                        scale: 0,
+                                        rotate: 180,
+                                      }}
+                                      whileHover={{
+                                        scale: 1.1,
+                                        rotate: [0, -5, 5, 0],
+                                      }}
+                                      whileTap={{ scale: 0.9 }}
+                                      transition={{
+                                        duration: 0.3,
+                                        ease: "easeOut",
+                                      }}
+                                      onClick={() =>
+                                        handleDeleteClick(message.id)
+                                      }
+                                      className="relative p-2.5 rounded-xl bg-gradient-to-br from-red-500/90 to-pink-500/90 text-white backdrop-blur-xl shadow-xl border border-red-400/20 group overflow-hidden"
+                                      title="メッセージを削除"
+                                    >
+                                      <motion.div
+                                        className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/20 to-white/0"
+                                        initial={{ x: "-100%" }}
+                                        whileHover={{ x: "100%" }}
+                                        transition={{ duration: 0.5 }}
+                                      />
+                                      <Trash2 className="w-4 h-4 relative z-10" />
+                                      <motion.div
+                                        className="absolute inset-0 bg-red-600/20 blur-xl"
+                                        animate={{
+                                          scale: [1, 1.2, 1],
+                                          opacity: [0.5, 0.8, 0.5],
+                                        }}
+                                        transition={{
+                                          duration: 2,
+                                          repeat: Infinity,
+                                          ease: "easeInOut",
+                                        }}
+                                      />
+                                    </motion.button>
+                                  )}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
                       </div>
                       {message.sender === currentUser && (
@@ -301,7 +628,8 @@ export default function ChatInterface({
                 </motion.div>
               ))}
             </AnimatePresence>
-            {/* タイピング中のユーザーがいる場合にインジケーターを表示 */}
+
+            {/* タイピング中のユーザー表示 */}
             <AnimatePresence>
               {typingUsers.length > 0 && (
                 <motion.div

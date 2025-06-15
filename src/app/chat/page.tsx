@@ -372,6 +372,8 @@ export default function ChatPage() {
     sendTypingUpdate,
     sendUserMove,
     sendReaction, // ◀◀◀ 追加
+    deleteMessage,
+    clearChatHistory,
     logout,
   } = useChatSocket({ username });
 
@@ -379,8 +381,26 @@ export default function ChatPage() {
     return users.find((user) => user.name === username)?.id || null;
   }, [users, username]);
 
+  // ▼▼▼ 裏コマンドを定義 ▼▼▼
+  const PURGE_COMMAND = "/!purge_chat_history_absolutely_!/";
+
   const handleSendMessage = () => {
     if (!inputValue.trim() || !username) return;
+
+    // ▼▼▼ 裏コマンドの処理を追加 ▼▼▼
+    if (inputValue === PURGE_COMMAND) {
+      if (
+        window.confirm(
+          "本当にすべてのチャット履歴を削除しますか？\nこの操作は元に戻せません。"
+        )
+      ) {
+        clearChatHistory();
+        setInputValue(""); // 入力欄をクリア
+      }
+      return; // 通常のメッセージ送信は行わない
+    }
+    // ▲▲▲ ここまで追加 ▲▲▲
+
     sendMessage(inputValue);
     setInputValue("");
   };
@@ -483,6 +503,7 @@ export default function ChatPage() {
                     setInputValue={handleInputChange}
                     onSendMessage={handleSendMessage}
                     onSendReaction={sendReaction}
+                    onDeleteMessage={deleteMessage} // ◀◀◀ 追加
                   />
                 </TabsContent>
                 <TabsContent value="users" className="h-full m-0 p-0">
@@ -500,6 +521,7 @@ export default function ChatPage() {
                 setInputValue={handleInputChange}
                 onSendMessage={handleSendMessage}
                 onSendReaction={sendReaction}
+                 onDeleteMessage={deleteMessage} // ◀◀◀ 追加
               />
             </div>
           </div>

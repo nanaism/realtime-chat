@@ -123,6 +123,18 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     );
     // ▲▲▲ ここまで追加 ▲▲▲
 
+    socket.on("message:deleted", ({ messageId }: { messageId: string }) => {
+      console.log(`[useChatSocket] Message ${messageId} deleted.`);
+      setMessages((prevMessages) =>
+        prevMessages.filter((msg) => msg.id !== messageId)
+      );
+    });
+
+    socket.on("chat:history_cleared", (systemMessage: Message) => {
+      console.log("[useChatSocket] Chat history has been cleared.");
+      setMessages([systemMessage]); // 履歴をシステムメッセージのみで上書き
+    });
+
     socket.on("disconnect", () => {
       console.log("[useChatSocket] Disconnected. Clearing states.");
       setIsSocketInitialized(false);
@@ -169,6 +181,14 @@ export function useChatSocket({ username }: UseChatSocketProps) {
   }, []);
   // ▲▲▲ ここまで追加 ▲▲▲
 
+  const deleteMessage = useCallback((messageId: string) => {
+    socketRef.current?.emit("message:delete", { messageId });
+  }, []);
+
+  const clearChatHistory = useCallback(() => {
+    socketRef.current?.emit("chat:clear_history");
+  }, []);
+
   const logout = useCallback(() => {
     socketRef.current?.disconnect();
   }, []);
@@ -185,6 +205,8 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     sendTypingUpdate,
     sendUserMove,
     sendReaction, // ◀◀◀ 追加
+    deleteMessage,
+    clearChatHistory,
     logout,
   };
 }

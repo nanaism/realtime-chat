@@ -24,8 +24,11 @@ export interface TypingStatus {
 }
 
 // Socket.IOのイベント型定義
+// ... 既存の型定義 ...
+
+// Socket.IOのイベント型定義
 export interface ServerToClientEvents {
-  "chat:history": (history: Message[]) => void; // 履歴取得イベントを追加
+  "chat:history": (history: Message[]) => void;
   "message:new": (message: Message) => void;
   "users:update": (users: User[]) => void;
   "user:typing": (data: {
@@ -33,18 +36,24 @@ export interface ServerToClientEvents {
     name: string;
     isTyping: boolean;
   }) => void;
-  // ▼▼▼ 以下を追加 ▼▼▼
   "reaction:update": (data: {
     messageId: string;
     reactions: Message["reactions"];
   }) => void;
+  // ▼▼▼ ここから追加 ▼▼▼
+  "message:deleted": (data: { messageId: string }) => void; // 個別メッセージ削除通知
+  "chat:history_cleared": (systemMessage: Message) => void; // 全履歴削除通知
+  // ▲▲▲ ここまで追加 ▲▲▲
 }
 
 export interface ClientToServerEvents {
   "user:login": (userData: User) => void;
-  "message:send": (message: Omit<Message, "id" | "reactions">) => void; // reactionsを除外
+  "message:send": (message: Omit<Message, "id" | "reactions">) => void;
   "user:move": (position: { x: number; y: number }) => void;
   "user:typing": (isTyping: boolean) => void;
-  // ▼▼▼ 以下を追加 ▼▼▼
   "reaction:add": (data: { messageId: string; emoji: string }) => void;
+  // ▼▼▼ ここから追加 ▼▼▼
+  "message:delete": (data: { messageId: string }) => void; // 個別メッセージ削除リクエスト
+  "chat:clear_history": () => void; // 全履歴削除リクエスト
+  // ▲▲▲ ここまで追加 ▲▲▲
 }
