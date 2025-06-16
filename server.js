@@ -28,7 +28,16 @@ app.prepare().then(() => {
     handle(req, res);
   });
 
-  const io = new Server(server);
+  // Socket.IOサーバーの初期化部分を修正
+  const io = new Server(server, {
+    // ▼▼▼ タイムアウト設定を追加 ▼▼▼
+    // 目的: ネットワークの揺らぎやブラウザのバックグラウンド動作による
+    // 意図しない切断を防ぎ、接続をより安定させるため。
+    pingInterval: 25000, // 25秒ごとに生存確認のpingを送信 (デフォルト値のままですが、明記しておくと分かりやすいです)
+    pingTimeout: 60000, // ping送信後、クライアントからのpong応答を60秒待ちます（デフォルトは20秒）。
+    // この時間を伸ばすことで、一時的な無応答で切断されにくくなります。
+    // ▲▲▲ ここまで追加 ▲▲▲
+  });
 
   io.engine.on("connection_error", (err) => {
     console.log("Connection error:", err);
@@ -104,8 +113,8 @@ app.prepare().then(() => {
       if (messageHistory.length > MAX_HISTORY) {
         messageHistory.shift();
       }
-      // 自分以外の全員に入室メッセージを送信
-      socket.broadcast.emit("message:new", systemMessage);
+      // 全員に入室メッセージを送信
+      io.emit("message:new", systemMessage);
 
       // 全員にユーザーリストの更新を通知
       const usersList = Array.from(users.values());

@@ -12,10 +12,19 @@ import {
   useMotionValue,
   useTransform,
 } from "framer-motion";
-import { Send, Sparkles, Trash2 } from "lucide-react";
+// ▼▼▼ アイコンを追加 ▼▼▼
+import { ArrowDown, Send, Sparkles, Trash2 } from "lucide-react";
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
-// 時間差を日本語で表示するヘルパー関数
+// ▼▼▼ useCallback, useLayoutEffect を追加 ▼▼▼
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+
+// 時間差を日本語で表示するヘルパー関数 (変更なし)
 const formatDistanceToNow = (date: Date): string => {
   const now = new Date();
   const diff = now.getTime() - date.getTime();
@@ -29,17 +38,8 @@ const formatDistanceToNow = (date: Date): string => {
   return "たった今";
 };
 
-interface ChatInterfaceProps {
-  messages: Message[];
-  typingUsers: string[];
-  currentUser: string;
-  inputValue: string;
-  setInputValue: (value: string) => void;
-  onSendMessage: () => void;
-  onSendReaction: (messageId: string, emoji: string) => void;
-  onDeleteMessage: (messageId: string) => void;
-}
-
+// ... ParticleEffect, DeleteConfirmation コンポーネント (変更なし) ...
+// (元のコードをそのままここに配置してください)
 // パーティクルコンポーネント
 const ParticleEffect = ({
   x,
@@ -133,6 +133,17 @@ const DeleteConfirmation = ({
   );
 };
 
+interface ChatInterfaceProps {
+  messages: Message[];
+  typingUsers: string[];
+  currentUser: string;
+  inputValue: string;
+  setInputValue: (value: string) => void;
+  onSendMessage: () => void;
+  onSendReaction: (messageId: string, emoji: string) => void;
+  onDeleteMessage: (messageId: string) => void;
+}
+
 export default function ChatInterface({
   messages,
   typingUsers,
@@ -143,7 +154,16 @@ export default function ChatInterface({
   onSendReaction,
   onDeleteMessage,
 }: ChatInterfaceProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  // ▼▼▼ ここからが大幅な変更箇所です ▼▼▼
+
+  // 1. StateとRefの準備
+  const scrollAreaRef = useRef<HTMLDivElement>(null); // ScrollAreaのルート要素を参照
+  const [newMessagesCount, setNewMessagesCount] = useState(0);
+  const isAtBottomRef = useRef(true); // useEffect内で最新のスクロール状態を参照するためのRef
+
+  // 元の `messagesEndRef` は不要になるため削除します。
+  // const messagesEndRef = useRef<HTMLDivElement>(null);
+
   const [isSending, setIsSending] = useState(false);
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
@@ -155,7 +175,6 @@ export default function ChatInterface({
   const [selectedEmoji, setSelectedEmoji] = useState<string | null>(null);
 
   const EMOJI_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
-  // [修正点] TypeScriptエラーを解消するため、Record<string, string> 型を指定
   const EMOJI_COLORS: Record<string, string> = {
     "👍": "from-blue-400 to-blue-600",
     "❤️": "from-red-400 to-pink-600",
@@ -164,6 +183,74 @@ export default function ChatInterface({
     "😢": "from-cyan-400 to-blue-500",
     "🙏": "from-amber-400 to-yellow-500",
   };
+
+  // 2. スクロール制御関数の作成
+  const getScrollViewport = () => {
+    return scrollAreaRef.current?.querySelector<HTMLDivElement>(
+      ":scope > div[data-radix-scroll-area-viewport]"
+    );
+  };
+
+  const scrollToBottom = useCallback(
+    (behavior: "smooth" | "auto" = "smooth") => {
+      const viewport = getScrollViewport();
+      if (viewport) {
+        viewport.scrollTo({ top: viewport.scrollHeight, behavior });
+      }
+    },
+    []
+  );
+
+  const handleScroll = useCallback(() => {
+    const viewport = getScrollViewport();
+    if (!viewport) return;
+
+    const threshold = 50; // 50px手前でも「最下部」と判定する許容範囲
+    const isNowAtBottom =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <
+      threshold;
+
+    isAtBottomRef.current = isNowAtBottom;
+
+    // 最下部に到達したら新着通知を消す
+    if (isNowAtBottom && newMessagesCount > 0) {
+      setNewMessagesCount(0);
+    }
+  }, [newMessagesCount]);
+
+  // 3. `useEffect` の刷新
+  // メッセージの変更を監視し、スクロールや通知を制御する
+  const prevMessagesLengthRef = useRef(messages.length);
+  useLayoutEffect(() => {
+    const isNewMessageAdded = messages.length > prevMessagesLengthRef.current;
+
+    if (isNewMessageAdded) {
+      const lastMessage = messages[messages.length - 1];
+      // 自分が送信したメッセージか、またはチャットの最下部にいる場合のみ自動スクロール
+      if (lastMessage.sender === currentUser || isAtBottomRef.current) {
+        scrollToBottom("smooth");
+      } else {
+        // スクロールアップ中に他の人からメッセージが来た場合は通知カウンターを増やす
+        setNewMessagesCount((prev) => prev + 1);
+      }
+    }
+
+    // 初回読み込み時に一番下へスクロール
+    if (prevMessagesLengthRef.current === 0 && messages.length > 0) {
+      scrollToBottom("auto");
+    }
+
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages, currentUser, scrollToBottom]);
+
+  // スクロールイベントリスナーを登録
+  useEffect(() => {
+    const viewport = getScrollViewport();
+    if (viewport) {
+      viewport.addEventListener("scroll", handleScroll, { passive: true });
+      return () => viewport.removeEventListener("scroll", handleScroll);
+    }
+  }, [handleScroll]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -175,17 +262,25 @@ export default function ChatInterface({
   const handleSend = () => {
     if (inputValue.trim()) {
       setIsSending(true);
+      // 送信したら必ず一番下にスクロール
+      scrollToBottom("smooth");
       onSendMessage();
       setTimeout(() => setIsSending(false), 300);
     }
   };
 
+  // 新着通知ボタンのクリック処理
+  const handleGoToBottomClick = () => {
+    scrollToBottom("smooth");
+    setNewMessagesCount(0);
+  };
+
+  // ... (その他のハンドラ関数は変更なし) ...
   const handleMouseMove = (e: React.MouseEvent) => {
     const rect = e.currentTarget.getBoundingClientRect();
     mouseX.set(e.clientX - rect.left);
     mouseY.set(e.clientY - rect.top);
   };
-
   const handleReaction = (
     messageId: string,
     emoji: string,
@@ -197,16 +292,13 @@ export default function ChatInterface({
     onSendReaction(messageId, emoji);
     setSelectedEmoji(emoji);
     setTimeout(() => setSelectedEmoji(null), 500);
-    // [修正点] アニメーション速度に合わせてパーティクルの消去時間を調整 (1000ms -> 500ms)
     setTimeout(() => {
       setParticles((prev) => prev.filter((p) => p.id !== id));
     }, 500);
   };
-
   const handleDeleteClick = (messageId: string) => {
     setDeleteConfirmId(messageId);
   };
-
   const confirmDelete = () => {
     if (deleteConfirmId) {
       onDeleteMessage(deleteConfirmId);
@@ -214,18 +306,14 @@ export default function ChatInterface({
     }
   };
 
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, typingUsers]);
+  // ▲▲▲ ここまでが大幅な変更箇所です ▲▲▲
 
   return (
     <motion.div
       className="flex flex-col h-full relative overflow-hidden"
       onMouseMove={handleMouseMove}
     >
-      {/* パーティクルレイヤー */}
+      {/* ... (パーティクル、削除確認モーダル、背景エフェクトは変更なし) ... */}
       <AnimatePresence>
         {particles.map((particle) => (
           <ParticleEffect
@@ -236,8 +324,6 @@ export default function ChatInterface({
           />
         ))}
       </AnimatePresence>
-
-      {/* 削除確認モーダル */}
       <AnimatePresence>
         {deleteConfirmId && (
           <DeleteConfirmation
@@ -246,11 +332,7 @@ export default function ChatInterface({
           />
         )}
       </AnimatePresence>
-
-      {/* 背景グラデーションエフェクト */}
       <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50/20 to-violet-50/20 dark:from-slate-950 dark:via-blue-950/20 dark:to-violet-950/20 -z-10" />
-
-      {/* 動的な光のエフェクト */}
       <motion.div
         className="absolute w-96 h-96 bg-gradient-to-r from-blue-400/20 to-violet-400/20 dark:from-blue-600/10 dark:to-violet-600/10 rounded-full blur-3xl"
         style={{
@@ -261,10 +343,12 @@ export default function ChatInterface({
 
       {/* チャットメッセージ表示エリア */}
       <div className="flex-1 overflow-hidden relative">
-        <ScrollArea className="h-full absolute inset-0 p-4">
+        {/* ▼▼▼ ScrollAreaに `ref` を渡します ▼▼▼ */}
+        <ScrollArea ref={scrollAreaRef} className="h-full absolute inset-0 p-4">
           <div className="space-y-6 pb-2">
             <AnimatePresence mode="popLayout">
               {messages.map((message) => (
+                // ... (message.mapの中身は変更なし) ...
                 <motion.div
                   key={message.id}
                   layout
@@ -355,7 +439,7 @@ export default function ChatInterface({
                             </p>
                           </motion.div>
 
-                          {/* リアクションバッジ */}
+                          {/* リアクションバッジ (変更なし) */}
                           <div
                             className="absolute -bottom-6 flex gap-1.5 px-2"
                             style={
@@ -423,8 +507,6 @@ export default function ChatInterface({
                                         >
                                           {users.length}
                                         </span>
-
-                                        {/* ホバー時のツールチップ */}
                                         <motion.div
                                           initial={{ opacity: 0, y: 5 }}
                                           whileHover={{ opacity: 1, y: 0 }}
@@ -438,7 +520,7 @@ export default function ChatInterface({
                             </AnimatePresence>
                           </div>
 
-                          {/* ホバー時のアクションパネル */}
+                          {/* ホバー時のアクションパネル (変更なし) */}
                           <AnimatePresence>
                             {hoveredMessageId === message.id && (
                               <motion.div
@@ -471,7 +553,6 @@ export default function ChatInterface({
                                 }`}
                               >
                                 <div className="flex items-center gap-2">
-                                  {/* 3Dリアクションピッカー */}
                                   <motion.div
                                     className="relative"
                                     initial={{ rotateX: -20 }}
@@ -481,7 +562,6 @@ export default function ChatInterface({
                                   >
                                     <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-2xl shadow-2xl rounded-2xl p-2 flex gap-1 border border-slate-200/50 dark:border-slate-600/50">
                                       <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 rounded-2xl" />
-                                      {/* [修正点] 既リアクションのスタイルと無効化 */}
                                       {EMOJI_REACTIONS.map((emoji, index) => {
                                         const hasReacted =
                                           message.reactions?.[emoji]?.includes(
@@ -547,8 +627,6 @@ export default function ChatInterface({
                                       })}
                                     </div>
                                   </motion.div>
-
-                                  {/* 削除ボタン (自分のメッセージの場合のみ) */}
                                   {message.sender === currentUser && (
                                     <motion.button
                                       initial={{
@@ -629,9 +707,10 @@ export default function ChatInterface({
               ))}
             </AnimatePresence>
 
-            {/* タイピング中のユーザー表示 */}
+            {/* タイピング中のユーザー表示 (変更なし) */}
             <AnimatePresence>
               {typingUsers.length > 0 && (
+                // ... (元のコードをそのままここに配置) ...
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -676,19 +755,52 @@ export default function ChatInterface({
                       ))}
                     </div>
                   </motion.div>
-                  <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">
                     {typingUsers.join(", ")}{" "}
                     {typingUsers.length === 1 ? "さんが" : "さん達が"}入力中...
                   </span>
                 </motion.div>
               )}
             </AnimatePresence>
-            <div ref={messagesEndRef} />
+
+            {/* ▼▼▼ `messagesEndRef` を削除します ▼▼▼ */}
+            {/* <div ref={messagesEndRef} /> */}
           </div>
         </ScrollArea>
+
+        {/* ▼▼▼ 4. 新着メッセージ通知UIを追加 ▼▼▼ */}
+        <AnimatePresence>
+          {newMessagesCount > 0 && (
+            <motion.div
+              initial={{ y: "200%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "200%", opacity: 0 }}
+              transition={{ type: "spring", stiffness: 350, damping: 30 }}
+              className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20"
+            >
+              <Button
+                onClick={handleGoToBottomClick}
+                className="rounded-full shadow-lg bg-white/90 dark:bg-slate-800/90 backdrop-blur-md hover:bg-white dark:hover:bg-slate-700 text-blue-500 dark:text-blue-400 border border-slate-200/50 dark:border-slate-700/50 pl-4 pr-5 py-2 h-auto"
+              >
+                <motion.div
+                  animate={{ y: [0, -2, 0, 2, 0] }}
+                  transition={{
+                    duration: 1.5,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
+                >
+                  <ArrowDown className="h-5 w-5 mr-2" />
+                </motion.div>
+                {newMessagesCount}件の新着メッセージ
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* メッセージ入力エリア */}
+      {/* メッセージ入力エリア (変更なし) */}
+      {/* ... (元のコードをそのままここに配置) ... */}
       <motion.div
         className="p-4 border-t border-slate-200/50 dark:border-slate-800/50 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl"
         initial={{ y: 100 }}
@@ -759,8 +871,6 @@ export default function ChatInterface({
                   </motion.div>
                 )}
               </AnimatePresence>
-
-              {/* 送信ボタンのリップルエフェクト */}
               {inputValue.trim() && (
                 <motion.div
                   className="absolute inset-0 bg-white/20"
