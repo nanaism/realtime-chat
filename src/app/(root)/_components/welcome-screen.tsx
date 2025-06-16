@@ -16,6 +16,8 @@ import { Label } from "@/components/ui/label";
 import {
   AnimatePresence,
   motion,
+  useAnimate,
+  useAnimationControls, // ★★★ アニメーション制御のために追加
   useMotionTemplate,
   useMotionValue,
   useSpring,
@@ -29,7 +31,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import type React from "react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { io, Socket } from "socket.io-client"; // ★★★ socket.io-clientをインポート ★★★
+import { io, Socket } from "socket.io-client";
 
 // Advanced Lottie Animation - Floating Orbs (変更なし)
 const floatingOrbAnimation = {
@@ -134,7 +136,6 @@ const floatingOrbAnimation = {
     },
   ],
 };
-
 const LogoAnimation = memo(() => {
   const [isHovered, setIsHovered] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -391,16 +392,26 @@ const LogoAnimation = memo(() => {
 });
 LogoAnimation.displayName = "LogoAnimation";
 
+const MotionInput = motion(Input);
+
 export default function WelcomeScreen() {
   const [username, setUsername] = useState("");
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null); // ★★★ ここを追加 ★★★
+  const inputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
-  // --- ▼▼▼ ここから追加 ▼▼▼ ---
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // --- ▲▲▲ ここまで追加 ▲▲▲ ---
+
+  const buttonRippleControls = useAnimationControls();
+  // ★★★ 提案1: 入力欄の初期アニメーションを制御
+  const inputIntroControls = useAnimationControls();
+
+  // ★★★ 提案2: プレースホルダーアニメーション用の状態とフック
+  const [isPlaceholderVisible, setIsPlaceholderVisible] = useState(true);
+  const placeholderText = "あなたの名前は？";
+  const [scope, animate] = useAnimate();
 
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
@@ -416,19 +427,26 @@ export default function WelcomeScreen() {
   const gradientY = useTransform(springY, [-0.5, 0.5], [0, 100]);
   const background = useMotionTemplate`radial-gradient(circle at ${gradientX}% ${gradientY}%, rgba(59, 130, 246, 0.15), transparent 50%)`;
 
-  // ★★★ ここから追加 ★★★
   useEffect(() => {
-    // ページのアニメーションが落ち着いたタイミングでフォーカスを当てるため、
-    // 短い遅延を入れるとより確実です。
-    const timer = setTimeout(() => {
+    // ★★★ ページ全体の登場アニメーションが終わるのを待ってから入力欄の演出を開始
+    const introTimer = setTimeout(() => {
       inputRef.current?.focus();
-    }, 100);
+      // ★★★ 提案1: 波紋＆スポットライトアニメーションを発火
+      inputIntroControls.start("animate");
 
-    // コンポーネントがアンマウントされる際にタイマーをクリアします
-    return () => clearTimeout(timer);
-  }, []); // 空の依存配列でマウント時に一度だけ実行
-  // ★★★ ここまで追加 ★★★
+      // ★★★ 提案2: タイピングプレースホルダーアニメーションを開始
+      animate(
+        "span",
+        { opacity: 1 },
+        { duration: 0.1, delay: (i) => i * 0.07 + 0.5 } // 0.5秒遅らせて波紋の後に開始
+      );
+    }, 1200); // カードの登場アニメーション(0.8s) + α
 
+    return () => clearTimeout(introTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 背景アニメーションやマウス追従のuseEffectは変更なし
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (containerRef.current) {
@@ -513,47 +531,42 @@ export default function WelcomeScreen() {
     };
   }, []);
 
-  // --- ▼▼▼ ここから handleSubmit を大幅に修正 ▼▼▼ ---
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || isLoading) return;
 
-    // 以前のエラーをクリアし、ローディング状態にする
+    buttonRippleControls.start({
+      scale: 1,
+      boxShadow: [
+        "0 0 0 0px rgba(59, 130, 246, 0.4)",
+        "0 0 0 40px rgba(59, 130, 246, 0)",
+      ],
+      transition: { duration: 0.6, ease: "easeOut" },
+    });
+
     setError(null);
     setIsLoading(true);
 
-    // 名前のチェックのためだけに一時的なソケット接続を作成
     const socket: Socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "");
 
-    // 接続成功時の処理
     socket.on("connect", () => {
       console.log("名前チェック用のソケット接続完了:", socket.id);
-
-      // サーバーに名前のチェックを依頼し、コールバックで結果を受け取る
       socket.emit(
         "user:check_name",
         username.trim(),
-        (response: {
-          available: unknown;
-          message: React.SetStateAction<string | null>;
-        }) => {
+        (response: { available: boolean; message: string }) => {
           if (response.available) {
-            // 名前が利用可能な場合
             localStorage.setItem("username", username.trim());
             router.push("/chat");
-            // 成功した場合、ローディングはページ遷移で終わるのでfalseにしなくてもよい
           } else {
-            // 名前が使用中の場合
             setError(response.message);
-            setIsLoading(false); // エラー表示のためにローディングを解除
+            setIsLoading(false);
           }
-          // チェックが終わったら、この一時的なソケットは切断する
           socket.disconnect();
         }
       );
     });
 
-    // 接続エラー時の処理
     socket.on("connect_error", () => {
       setError(
         "サーバーに接続できませんでした。時間をおいて再試行してください。"
@@ -562,7 +575,13 @@ export default function WelcomeScreen() {
       socket.disconnect();
     });
   };
-  // --- ▲▲▲ ここまで handleSubmit の修正完了 ▲▲▲ ---
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (!username.trim() || isLoading || e.button !== 0) {
+      return;
+    }
+    formRef.current?.requestSubmit();
+  };
 
   const features = [
     {
@@ -579,8 +598,26 @@ export default function WelcomeScreen() {
     },
   ];
 
+  // ★★★ 提案1: 波紋＆スポットライトアニメーションの定義
+  const inputIntroVariants: Variants = {
+    initial: {
+      scale: 1,
+      opacity: 0,
+    },
+    animate: {
+      scale: 1.3,
+      opacity: [0, 0.8, 0],
+      transition: {
+        duration: 0.7,
+        ease: "circOut",
+      },
+    },
+  };
+
   return (
+    // JSX全体構造は変更なし
     <div className="min-h-screen bg-white dark:bg-slate-900 overflow-hidden relative flex items-center justify-center p-4">
+      {/* ...背景要素は変更なし... */}
       <div className="fixed inset-0 bg-gradient-to-br from-blue-50/50 via-white to-purple-50/50 dark:from-slate-900 dark:via-gray-900 dark:to-purple-900/20" />
       <motion.div className="fixed inset-0 opacity-30" style={{ background }} />
       <div className="fixed inset-0 backdrop-blur-[100px]" />
@@ -603,6 +640,7 @@ export default function WelcomeScreen() {
           }}
           className="relative"
         >
+          {/* ...Cardより上のモーションは変更なし... */}
           <motion.div
             className="absolute -inset-20 rounded-3xl opacity-40"
             animate={{
@@ -617,6 +655,7 @@ export default function WelcomeScreen() {
           />
 
           <Card className="w-full max-w-md backdrop-blur-xl bg-white/70 dark:bg-white/5 shadow-[0_8px_32px_rgba(59,130,246,0.15)] border border-white/20 overflow-visible relative">
+            {/* ...Card内のヘッダー部分は変更なし... */}
             <div className="absolute -top-10 -right-10 w-40 h-40 pointer-events-none">
               <Lottie
                 animationData={floatingOrbAnimation}
@@ -675,6 +714,7 @@ export default function WelcomeScreen() {
             </CardHeader>
 
             <CardContent className="space-y-6 relative z-10">
+              {/* ...features部分は変更なし... */}
               <div className="flex flex-wrap justify-center gap-4 py-4">
                 {features.map((feature) => (
                   <motion.div
@@ -758,6 +798,7 @@ export default function WelcomeScreen() {
               </div>
 
               <motion.form
+                ref={formRef}
                 onSubmit={handleSubmit}
                 variants={{
                   initial: { y: 20, opacity: 0 },
@@ -801,21 +842,59 @@ export default function WelcomeScreen() {
                       </motion.div>
                     </Label>
                     <div className="relative font-sans">
-                      <Input
-                        ref={inputRef} // ★★★ ここを追加 ★★★
+                      {/* ★★★ 提案1: 波紋＆スポットライトエフェクト用の要素 */}
+                      <motion.div
+                        className="absolute -inset-0.5 rounded-xl border-2 border-blue-400 pointer-events-none"
+                        variants={inputIntroVariants}
+                        initial="initial"
+                        animate={inputIntroControls}
+                      />
+
+                      {/* ★★★ 提案2: タイピングプレースホルダー */}
+                      <div ref={scope}>
+                        {isPlaceholderVisible && (
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none text-lg text-gray-400 dark:text-gray-500 z-10">
+                            {placeholderText.split("").map((char, i) => (
+                              <motion.span key={i} style={{ opacity: 0 }}>
+                                {char}
+                              </motion.span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <MotionInput
+                        ref={inputRef}
                         id="username"
-                        placeholder="あなたの名前は？"
+                        // ★★★ プレースホルダーを空にしてアニメーションと置き換え
+                        placeholder=""
                         value={username}
                         onChange={(e) => {
                           setUsername(e.target.value);
+                          // ★★★ 入力状態に応じてプレースホルダーの表示を切り替え
+                          setIsPlaceholderVisible(e.target.value === "");
                           if (error) setError(null);
                         }}
                         required
                         disabled={isLoading}
-                        className="backdrop-blur-sm bg-white/60 dark:bg-white/10 border-white/30 hover:border-blue-300/50 focus:border-blue-500/50 transition-all duration-300 pl-4 pr-12 py-6 text-lg rounded-xl shadow-inner w-full"
-                        style={{
-                          boxShadow:
-                            "inset 0 2px 4px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
+                        // ★★★ 提案3: カスタムキャレットカラーと脈動エフェクト
+                        className="font-sans caret-blue-500 dark:caret-blue-400 backdrop-blur-sm bg-white/60 dark:bg-white/10 border-white/30 hover:border-blue-300/50 focus:border-blue-500/50 pl-4 pr-12 py-6 text-lg rounded-xl shadow-inner w-full relative"
+                        whileFocus={{
+                          boxShadow: [
+                            "inset 0 2px 4px rgba(0,0,0,0.06), 0 0 0px 0px rgba(59, 130, 246, 0.3)",
+                            "inset 0 2px 4px rgba(0,0,0,0.06), 0 0 15px 3px rgba(59, 130, 246, 0.3)",
+                            "inset 0 2px 4px rgba(0,0,0,0.06), 0 0 0px 0px rgba(59, 130, 246, 0.3)",
+                          ],
+                          transition: {
+                            duration: 1.5,
+                            repeat: Infinity,
+                            ease: "easeInOut",
+                          },
+                        }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 300,
+                          damping: 15,
                         }}
                       />
                       <AnimatePresence>
@@ -841,7 +920,6 @@ export default function WelcomeScreen() {
                       </AnimatePresence>
                     </div>
 
-                    {/* --- ▼▼▼ エラーメッセージ表示を追加 ▼▼▼ --- */}
                     <AnimatePresence>
                       {error && (
                         <motion.p
@@ -855,9 +933,9 @@ export default function WelcomeScreen() {
                         </motion.p>
                       )}
                     </AnimatePresence>
-                    {/* --- ▲▲▲ エラーメッセージ表示を追加 ▲▲▲ --- */}
                   </div>
                 </div>
+                {/* ...フォームのホバーエフェクトは変更なし... */}
                 <motion.div
                   className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none"
                   variants={{ hover: { opacity: 1 }, initial: { opacity: 0 } }}
@@ -881,14 +959,23 @@ export default function WelcomeScreen() {
             </CardContent>
 
             <CardFooter className="relative z-10">
+              {/* ...フッター部分は変更なし... */}
               <motion.div
                 className="w-full"
-                whileHover={{ scale: !isLoading ? 1.02 : 1 }}
-                whileTap={{ scale: !isLoading ? 0.98 : 1 }}
+                whileHover={{
+                  scale: !isLoading ? 1.07 : 1,
+                  y: !isLoading ? -6 : 0,
+                }}
+                whileTap={{
+                  scale: !isLoading ? 0.96 : 1,
+                  y: !isLoading ? 3 : 0,
+                }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
               >
                 <Button
+                  type="submit"
                   className="w-full relative overflow-hidden rounded-xl py-6 font-sans text-white font-semibold text-lg transition-all duration-300 shadow-lg hover:shadow-2xl group"
-                  onClick={handleSubmit}
+                  onPointerDown={handlePointerDown}
                   disabled={!username.trim() || isLoading}
                   style={{
                     background:
@@ -910,6 +997,11 @@ export default function WelcomeScreen() {
                       background:
                         "linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)",
                     }}
+                  />
+                  <motion.div
+                    className="absolute inset-0 rounded-xl"
+                    style={{ pointerEvents: "none" }}
+                    animate={buttonRippleControls}
                   />
                   <span className="relative z-10 flex items-center justify-center gap-2 font-sans">
                     {isLoading ? "認証中..." : "飛び込む"}
