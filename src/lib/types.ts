@@ -15,6 +15,13 @@ export interface Message {
   content: string;
   timestamp: string;
   reactions?: { [emoji: string]: string[] }; // 例: { "👍": ["user1", "user2"], "❤️": ["user1"] }
+  // ▼▼▼ リプライ機能のためのプロパティを追加 ▼▼▼
+  replyTo?: string; // リプライ先のメッセージID
+  replyContext?: {
+    sender: string;
+    content: string;
+  };
+  // ▲▲▲ 追加 ▲▲▲
 }
 
 export interface TypingStatus {
@@ -58,7 +65,12 @@ export interface ClientToServerEvents {
   "user:login": (userData: Omit<User, "id">) => void;
   // --- ▲▲▲ ここまでが変更箇所 ▲▲▲ ---
 
-  "message:send": (message: Omit<Message, "id" | "reactions">) => void;
+  // ▼▼▼ 変更: message:sendでreplyToを送れるようにする ▼▼▼
+  // replyContextはサーバー側で付与するため、クライアントからは送信しない
+  "message:send": (
+    message: Omit<Message, "id" | "reactions" | "replyContext">
+  ) => void;
+  // ▲▲▲ 変更 ▲▲▲
   "user:move": (position: { x: number; y: number }) => void;
   "user:typing": (isTyping: boolean) => void;
   "reaction:add": (data: { messageId: string; emoji: string }) => void;

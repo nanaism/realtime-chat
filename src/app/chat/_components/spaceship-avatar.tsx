@@ -38,7 +38,9 @@ export default React.forwardRef<HTMLDivElement, SpaceshipAvatarProps>(
       filter: isBeingDragged
         ? "drop-shadow(0 0 30px rgba(255, 255, 255, 0.8))"
         : "none",
-      zIndex: isBeingDragged ? 30 : isCurrentUser ? 25 : 20,
+      // ▼▼▼ 変更点: zIndexの管理を親コンポーネントに移動したため、この行を削除します ▼▼▼
+      // zIndex: isBeingDragged ? 30 : isCurrentUser ? 25 : 20,
+      // ▲▲▲ 変更ここまで ▲▲▲
       cursor: isCurrentUser ? "grab" : "default",
     };
 

@@ -878,7 +878,7 @@ export default function WelcomeScreen() {
                         required
                         disabled={isLoading}
                         // ★★★ 提案3: カスタムキャレットカラーと脈動エフェクト
-                        className="font-sans caret-blue-500 dark:caret-blue-400 backdrop-blur-sm bg-white/60 dark:bg-white/10 border-white/30 hover:border-blue-300/50 focus:border-blue-500/50 pl-4 pr-12 py-6 text-lg rounded-xl shadow-inner w-full relative"
+                        className="font-sans  caret-blue-500 dark:caret-blue-400 backdrop-blur-sm bg-white/60 dark:bg-white/10 border-white/30 hover:border-blue-300/50 focus:border-blue-500/50 pl-4 pr-12 py-6 text-lg rounded-xl shadow-inner w-full relative"
                         whileFocus={{
                           boxShadow: [
                             "inset 0 2px 4px rgba(0,0,0,0.06), 0 0 0px 0px rgba(59, 130, 246, 0.3)",

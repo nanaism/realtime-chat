@@ -163,17 +163,19 @@ export function useChatSocket({ username }: UseChatSocketProps) {
         socketRef.current = null;
       }
     };
-  }, [username, router]); 
+  }, [username, router]);
 
   const sendMessage = useCallback(
-    (content: string) => {
+    // ▼▼▼ 変更: replyToを引数に追加 ▼▼▼
+    (content: string, replyTo?: string) => {
       if (!content.trim() || !username || !socketRef.current) return;
 
-      const newMessage: Omit<Message, "id" | "reactions"> = {
+      const newMessage: Omit<Message, "id" | "reactions" | "replyContext"> = {
         type: "user",
         sender: username,
         content: content,
         timestamp: new Date().toISOString(),
+        replyTo, // ここでリプライ先のIDをセット
       };
       socketRef.current.emit("message:send", newMessage);
       socketRef.current.emit("user:typing", false);

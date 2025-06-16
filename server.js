@@ -127,8 +127,26 @@ app.prepare().then(() => {
       const messageWithId = {
         ...message,
         id: `msg-${Date.now()}`,
-        reactions: {}, // ◀◀◀ 変更: リアクションを初期化
+        reactions: {},
       };
+
+      // ▼▼▼ リプライ処理を追加 ▼▼▼
+      // クライアントから replyTo (リプライ先のID) が送られてきた場合
+      if (message.replyTo) {
+        // 履歴からリプライ元のメッセージを検索
+        const repliedToMessage = messageHistory.find(
+          (m) => m.id === message.replyTo
+        );
+
+        // 見つかった場合、そのコンテキスト（送信者と内容）を新しいメッセージに含める
+        if (repliedToMessage && repliedToMessage.type === "user") {
+          messageWithId.replyContext = {
+            sender: repliedToMessage.sender,
+            content: repliedToMessage.content,
+          };
+        }
+      }
+      // ▲▲▲ リプライ処理を追加 ▲▲▲
 
       messageHistory.push(messageWithId);
       if (messageHistory.length > MAX_HISTORY) {

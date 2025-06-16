@@ -30,22 +30,31 @@ interface SpaceStationProps {
 }
 
 // --- 物理定数 ---
-const G = 50; // 重力定数（シミュレーションのスケール調整用）
-const BLACK_HOLE_MASS = 30; // ブラックホールの質量
-const SPACESHIP_MASS = 1.0; // 宇宙船の質量
-const INTER_AVATAR_GRAVITY_SCALE = 1; // アバター間の重力の影響度
+const G = 25; // 重力定数を下げて、全体的な引力を弱めます
+const BLACK_HOLE_MASS = 25; // ブラックホールの質量を下げます
+const SPACESHIP_MASS = 1.0;
+const INTER_AVATAR_GRAVITY_SCALE = 0.5; // アバター間の引力も少し弱めます
 
 // --- ビジュアル定数 ---
-const EVENT_HORIZON_RADIUS = 7.5; // 事象の地平面の半径
-const PHOTON_SPHERE_RADIUS = 8.0; // 光子球の半径
-const ACCRETION_DISK_INNER_RADIUS = 8.5; // 降着円盤の内径
-const ACCRETION_DISK_OUTER_RADIUS = 35; // 降着円盤の外径（外側のリングの端）
-const JET_BASE_RADIUS = 1.0; // ジェットの根元の半径
+const EVENT_HORIZON_RADIUS = 7.5;
+const PHOTON_SPHERE_RADIUS = 8.0;
+const ACCRETION_DISK_INNER_RADIUS = 8.5;
+const ACCRETION_DISK_OUTER_RADIUS = 35;
+const JET_BASE_RADIUS = 1.0;
 
-const RESPAWN_RADIUS_MIN = 150; // リスポーンする最小半径
-const RESPAWN_RADIUS_MAX = 220; // リスポーンする最大半径
-const ORBIT_SPEED_SCALE = 0.7; // 公転速度の初期値にかける係数
-const DAMPING = 0.99995; // 速度の減衰係数（1に近いほどゆっくり吸い込まれる）
+// --- 挙動に関する定数 ---
+const RESPAWN_RADIUS_MIN = 150;
+const RESPAWN_RADIUS_MAX = 220;
+const ORBIT_SPEED_SCALE = 0.6; // 軌道速度を少し抑えめにします
+const DAMPING = 0.98; // 減衰を強くして、速度が上がりすぎないようにします
+
+// ▼▼▼ 挙動を「ゆったり」にするための定数調整 ▼▼▼
+const ORBIT_STABLE_RADIUS = 25.0; // 安定して周回させたい半径（降着円盤の少し外側）
+const ORBIT_INFLUENCE_RADIUS = 50.0; // この半径の内側から周回軌道への誘導を開始します
+const ORBIT_PULL_FORCE = 0.5; // 軌道半径に引き寄せる力を調整（弱めて滑らかに）
+const ORBIT_VELOCITY_LERP_FACTOR = 0.03; // 軌道速度にゆっくり合わせるように調整
+// ▲▲▲ 定数の調整ここまで ▲▲▲
+// ▲▲▲ 新しい定数の追加ここまで ▲▲▲
 
 // --- カメラコントローラークラス ---
 class CameraController {
@@ -124,7 +133,6 @@ export default function SpaceStation({
 }: SpaceStationProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-
   const threeJsState = useRef<{
     scene: THREE.Scene | null;
     camera: THREE.PerspectiveCamera | null;
@@ -139,6 +147,7 @@ export default function SpaceStation({
         velocity: THREE.Vector3;
       };
     };
+    targetPositions: { [key: string]: THREE.Vector3 };
     blackHoleGroup: THREE.Group | null;
     volumetricNebula: THREE.Mesh | null;
     stars: THREE.Points | null;
@@ -152,6 +161,7 @@ export default function SpaceStation({
     avatarMeshes: {},
     avatarElements: {},
     physicsState: {},
+    targetPositions: {},
     blackHoleGroup: null,
     volumetricNebula: null,
     stars: null,
@@ -164,7 +174,7 @@ export default function SpaceStation({
   const throttledSendPosition = useRef(
     throttle((userId: string, newPosition: { x: number; y: number }) => {
       onUserMove(userId, newPosition);
-    }, 50)
+    }, 30) // スロットル時間を少し短くして、位置情報の更新頻度を上げる
   ).current;
 
   const cursor = useMemo(() => {
@@ -172,27 +182,18 @@ export default function SpaceStation({
     return "grab";
   }, [draggedUserId, isOrbitingCamera]);
 
-  // Tutorial state
   const [showTutorial, setShowTutorial] = useState(true);
   const [isMinimized, setIsMinimized] = useState(false);
   const [hasInteracted, setHasInteracted] = useState(false);
-
-  // Auto-minimize tutorial after 10 seconds or after first interaction
   useEffect(() => {
     if (hasInteracted) {
-      const timer = setTimeout(() => {
-        setIsMinimized(true);
-      }, 3000);
+      const timer = setTimeout(() => setIsMinimized(true), 3000);
       return () => clearTimeout(timer);
     } else {
-      const timer = setTimeout(() => {
-        setIsMinimized(true);
-      }, 10000);
+      const timer = setTimeout(() => setIsMinimized(true), 10000);
       return () => clearTimeout(timer);
     }
   }, [hasInteracted]);
-
-  // Track first interaction
   useEffect(() => {
     if ((draggedUserId || isOrbitingCamera) && !hasInteracted) {
       setHasInteracted(true);
@@ -234,6 +235,7 @@ export default function SpaceStation({
     state.composer.addPass(bloomPass);
     state.scene.add(new THREE.HemisphereLight(0x6080ff, 0x302040, 0.6));
 
+    // ビジュアル要素の作成 (変更なし)
     const starCount = 25000;
     const starVertices = [];
     const starColors = [];
@@ -318,36 +320,28 @@ export default function SpaceStation({
     state.volumetricNebula = new THREE.Mesh(nebulaGeometry, nebulaMaterial);
     state.scene.add(state.volumetricNebula);
 
-    // ==================================================================
-    // ★★★★★ ここからブラックホールのビジュアルを刷新 ★★★★★
-    // ==================================================================
     state.blackHoleGroup = new THREE.Group();
     state.scene.add(state.blackHoleGroup);
-
-    // 1. 事象の地平面 (黒い球) - 変更なし
     const eventHorizon = new THREE.Mesh(
       new THREE.SphereGeometry(EVENT_HORIZON_RADIUS, 64, 64),
       new THREE.MeshBasicMaterial({ color: 0x000000 })
     );
     state.blackHoleGroup.add(eventHorizon);
-
-    // 2. 降着円盤 (Accretion Disk) - 多重リング・カラフルに刷新
     const diskGeometry = new THREE.RingGeometry(
       ACCRETION_DISK_INNER_RADIUS,
       ACCRETION_DISK_OUTER_RADIUS,
       256,
-      32 // 解像度を上げて滑らかに
+      32
     );
     const diskMaterial = new THREE.ShaderMaterial({
       uniforms: {
         time: { value: 0 },
-        // 新しいカラーパレット
-        color1: { value: new THREE.Color(0xffffff) }, // 中心: 白
-        color2: { value: new THREE.Color(0xfff06e) }, // 黄色
-        color3: { value: new THREE.Color(0xff8c1a) }, // オレンジ
-        color4: { value: new THREE.Color(0x40a4df) }, // 明るい青
-        color5: { value: new THREE.Color(0x3643a5) }, // 暗い青
-        color6: { value: new THREE.Color(0x4b0082) }, // インディゴ
+        color1: { value: new THREE.Color(0xffffff) },
+        color2: { value: new THREE.Color(0xfff06e) },
+        color3: { value: new THREE.Color(0xff8c1a) },
+        color4: { value: new THREE.Color(0x40a4df) },
+        color5: { value: new THREE.Color(0x3643a5) },
+        color6: { value: new THREE.Color(0x4b0082) },
         dopplerBlue: { value: new THREE.Color(0.8, 0.9, 1.5) },
         dopplerRed: { value: new THREE.Color(1.5, 0.9, 0.8) },
       },
@@ -378,101 +372,40 @@ export default function SpaceStation({
         varying vec2 vUv;
         varying float vRadius;
         varying vec3 vWorldPosition;
-
-        // 2D Simplex Noise (変更なし)
         vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
         vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
         vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
-        float snoise(vec2 v) {
-          const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
-          vec2 i  = floor(v + dot(v, C.yy) ); vec2 x0 = v - i + dot(i, C.xx);
-          vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-          vec4 x12 = x0.xyxy + C.xxzz; x12.xy -= i1; i = mod289(i);
-          vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
-          vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
-          m = m*m; m = m*m;
-          vec3 x = 2.0 * fract(p * C.www) - 1.0; vec3 h = abs(x) - 0.5; vec3 ox = floor(x + 0.5); vec3 a0 = x - ox;
-          m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
-          vec3 g; g.x  = a0.x  * x0.x + h.x  * x0.y; g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-          return 130.0 * dot(m, g);
-        }
-        float fbm(vec2 p) {
-            float value = 0.0; float amplitude = 0.5;
-            for (int i = 0; i < 5; i++) { value += amplitude * snoise(p); p *= 2.0; amplitude *= 0.5; }
-            return value;
-        }
-
+        float snoise(vec2 v) { const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439); vec2 i  = floor(v + dot(v, C.yy) ); vec2 x0 = v - i + dot(i, C.xx); vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0); vec4 x12 = x0.xyxy + C.xxzz; x12.xy -= i1; i = mod289(i); vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 )); vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0); m = m*m; m = m*m; vec3 x = 2.0 * fract(p * C.www) - 1.0; vec3 h = abs(x) - 0.5; vec3 ox = floor(x + 0.5); vec3 a0 = x - ox; m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h ); vec3 g; g.x  = a0.x  * x0.x + h.x  * x0.y; g.yz = a0.yz * x12.xz + h.yz * x12.yw; return 130.0 * dot(m, g); }
+        float fbm(vec2 p) { float value = 0.0; float amplitude = 0.5; for (int i = 0; i < 5; i++) { value += amplitude * snoise(p); p *= 2.0; amplitude *= 0.5; } return value; }
         void main() {
           float normalizedRadius = (vRadius - ${ACCRETION_DISK_INNER_RADIUS.toFixed(
             1
           )}) / (${(
         ACCRETION_DISK_OUTER_RADIUS - ACCRETION_DISK_INNER_RADIUS
       ).toFixed(1)});
-          
           vec3 ringColor = vec3(0.0);
           float ringAlpha = 0.0;
           float speed = 0.0;
           float noise_scale = 0.0;
-          
-          // --- リングの定義 (ここがメインのロジック) ---
-          // Ring 1 (最内周)
-          if (normalizedRadius < 0.2) {
-              float localRadius = normalizedRadius / 0.2;
-              ringColor = mix(color1, color2, localRadius);
-              speed = 0.8;
-              noise_scale = 3.0;
-              ringAlpha = smoothstep(0.0, 0.02, normalizedRadius) * (1.0 - smoothstep(0.18, 0.2, normalizedRadius));
-          }
-          // Ring 2
-          else if (normalizedRadius > 0.25 && normalizedRadius < 0.5) {
-              float localRadius = (normalizedRadius - 0.25) / 0.25;
-              ringColor = mix(color2, color3, localRadius);
-              speed = 0.4;
-              noise_scale = 5.0;
-              ringAlpha = smoothstep(0.25, 0.27, normalizedRadius) * (1.0 - smoothstep(0.48, 0.5, normalizedRadius));
-          }
-          // Ring 3
-          else if (normalizedRadius > 0.55 && normalizedRadius < 0.75) {
-              float localRadius = (normalizedRadius - 0.55) / 0.2;
-              ringColor = mix(color4, color5, localRadius);
-              speed = 0.2;
-              noise_scale = 8.0;
-              ringAlpha = smoothstep(0.55, 0.57, normalizedRadius) * (1.0 - smoothstep(0.73, 0.75, normalizedRadius));
-          }
-          // Ring 4 (最外周)
-          else if (normalizedRadius > 0.8 && normalizedRadius <= 1.0) {
-              float localRadius = (normalizedRadius - 0.8) / 0.2;
-              ringColor = mix(color5, color6, localRadius);
-              speed = 0.1;
-              noise_scale = 12.0;
-              ringAlpha = smoothstep(0.8, 0.82, normalizedRadius) * (1.0 - smoothstep(0.98, 1.0, normalizedRadius));
-          }
-
+          if (normalizedRadius < 0.2) { float localRadius = normalizedRadius / 0.2; ringColor = mix(color1, color2, localRadius); speed = 0.8; noise_scale = 3.0; ringAlpha = smoothstep(0.0, 0.02, normalizedRadius) * (1.0 - smoothstep(0.18, 0.2, normalizedRadius)); }
+          else if (normalizedRadius > 0.25 && normalizedRadius < 0.5) { float localRadius = (normalizedRadius - 0.25) / 0.25; ringColor = mix(color2, color3, localRadius); speed = 0.4; noise_scale = 5.0; ringAlpha = smoothstep(0.25, 0.27, normalizedRadius) * (1.0 - smoothstep(0.48, 0.5, normalizedRadius)); }
+          else if (normalizedRadius > 0.55 && normalizedRadius < 0.75) { float localRadius = (normalizedRadius - 0.55) / 0.2; ringColor = mix(color4, color5, localRadius); speed = 0.2; noise_scale = 8.0; ringAlpha = smoothstep(0.55, 0.57, normalizedRadius) * (1.0 - smoothstep(0.73, 0.75, normalizedRadius)); }
+          else if (normalizedRadius > 0.8 && normalizedRadius <= 1.0) { float localRadius = (normalizedRadius - 0.8) / 0.2; ringColor = mix(color5, color6, localRadius); speed = 0.1; noise_scale = 12.0; ringAlpha = smoothstep(0.8, 0.82, normalizedRadius) * (1.0 - smoothstep(0.98, 1.0, normalizedRadius)); }
           if (ringAlpha > 0.0) {
               float angle = atan(vUv.y * 2.0 - 1.0, vUv.x * 2.0 - 1.0);
               float timeOffset = time * speed;
-              
               vec2 noiseCoord = vec2(angle * 3.0, normalizedRadius * noise_scale - timeOffset);
               float noise = fbm(noiseCoord);
               noise = pow(noise, 3.0);
-
               vec3 finalColor = ringColor;
-              
-              // ドップラー効果
               float doppler = smoothstep(-${ACCRETION_DISK_OUTER_RADIUS.toFixed(
                 1
               )}, ${ACCRETION_DISK_OUTER_RADIUS.toFixed(1)}, vWorldPosition.x);
               vec3 dopplerColor = mix(dopplerBlue, dopplerRed, doppler);
               finalColor *= dopplerColor;
-
-              // ノイズによる輝度変化
               finalColor *= 1.0 + noise * 3.0;
-
               gl_FragColor = vec4(finalColor, ringAlpha);
-          } else {
-              // 隙間は透明
-              discard;
-          }
+          } else { discard; }
         }
       `,
       side: THREE.DoubleSide,
@@ -483,8 +416,6 @@ export default function SpaceStation({
     const accretionDisk = new THREE.Mesh(diskGeometry, diskMaterial);
     accretionDisk.rotation.x = Math.PI / 2.0;
     state.blackHoleGroup.add(accretionDisk);
-
-    // 3. 光子リング (Photon Sphere) - 変更なし
     const photonRing = new THREE.Mesh(
       new THREE.TorusGeometry(PHOTON_SPHERE_RADIUS, 0.15, 32, 128),
       new THREE.MeshBasicMaterial({
@@ -494,8 +425,6 @@ export default function SpaceStation({
     );
     photonRing.rotation.copy(accretionDisk.rotation);
     state.blackHoleGroup.add(photonRing);
-
-    // 4. ジェット (Jet) - 変更なし
     const jetGeometry = new THREE.CylinderGeometry(
       JET_BASE_RADIUS,
       0.1,
@@ -506,29 +435,8 @@ export default function SpaceStation({
     );
     const jetMaterial = new THREE.ShaderMaterial({
       uniforms: { time: { value: 0 } },
-      vertexShader: `
-        uniform float time; 
-        varying vec2 vUv; 
-        void main() { 
-          vUv = uv; 
-          vec3 pos = position; 
-          float twist = sin(pos.y * 0.05 + time * 3.0) * (1.0 - uv.y) * 2.0;
-          float angle = atan(pos.x, pos.z);
-          pos.x += cos(angle) * twist; 
-          pos.z += sin(angle) * twist; 
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0); 
-        }
-      `,
-      fragmentShader: `
-        varying vec2 vUv; 
-        uniform float time; 
-        void main() { 
-          float pulse = sin(vUv.y * 25.0 - time * 2.5) * 0.5 + 0.5;
-          float baseGlow = pow(1.0 - vUv.y, 2.0);
-          float intensity = baseGlow * (pulse * 0.7 + 0.3) * 1.5;
-          gl_FragColor = vec4(vec3(0.7, 0.85, 1.0) * intensity, baseGlow * 0.8);
-        }
-      `,
+      vertexShader: ` uniform float time; varying vec2 vUv; void main() { vUv = uv; vec3 pos = position; float twist = sin(pos.y * 0.05 + time * 3.0) * (1.0 - uv.y) * 2.0; float angle = atan(pos.x, pos.z); pos.x += cos(angle) * twist; pos.z += sin(angle) * twist; gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0); } `,
+      fragmentShader: ` varying vec2 vUv; uniform float time; void main() { float pulse = sin(vUv.y * 25.0 - time * 2.5) * 0.5 + 0.5; float baseGlow = pow(1.0 - vUv.y, 2.0); float intensity = baseGlow * (pulse * 0.7 + 0.3) * 1.5; gl_FragColor = vec4(vec3(0.7, 0.85, 1.0) * intensity, baseGlow * 0.8); } `,
       transparent: true,
       side: THREE.DoubleSide,
       depthWrite: false,
@@ -540,9 +448,6 @@ export default function SpaceStation({
     bottomJet.position.y = -150;
     bottomJet.rotation.x = Math.PI;
     state.blackHoleGroup.add(topJet, bottomJet);
-    // ==================================================================
-    // ★★★★★ ブラックホールビジュアルの刷新ここまで ★★★★★
-    // ==================================================================
 
     state.plane = new THREE.Mesh(
       new THREE.PlaneGeometry(500, 500),
@@ -554,10 +459,11 @@ export default function SpaceStation({
     const clock = new THREE.Clock();
     const animate = () => {
       requestAnimationFrame(animate);
-      const delta = Math.min(clock.getDelta(), 0.05);
+      const delta = Math.min(clock.getDelta(), 0.05); // フレーム時間の上限を設定
       const time = clock.getElapsedTime();
       state.controls?.update();
 
+      // ビジュアル更新 (変更なし)
       if (state.blackHoleGroup) {
         state.blackHoleGroup.rotation.y += delta * 0.02;
         state.blackHoleGroup.children.forEach((child) => {
@@ -569,11 +475,9 @@ export default function SpaceStation({
           }
         });
       }
-
       if (state.stars && state.stars.material instanceof THREE.ShaderMaterial) {
         state.stars.material.uniforms.time.value = time;
       }
-
       if (
         state.volumetricNebula &&
         state.volumetricNebula.material instanceof THREE.ShaderMaterial &&
@@ -585,79 +489,150 @@ export default function SpaceStation({
         );
       }
 
-      // 物理シミュレーション
+      // ▼▼▼ 物理シミュレーションと同期ロジック (全面的に修正) ▼▼▼
+      // ▼▼▼ 物理シミュレーションと同期ロジック (ゆったりとした動きに修正) ▼▼▼
       if (
         state.scene &&
         state.avatarMeshes &&
         Object.keys(state.avatarMeshes).length > 0
       ) {
         const userIds = Object.keys(state.avatarMeshes);
-        const accelerations: { [key: string]: THREE.Vector3 } = {};
-        userIds.forEach((id1) => {
-          if (id1 === draggedUserId) return;
-          accelerations[id1] = new THREE.Vector3();
-          const mesh1 = state.avatarMeshes[id1];
-          const pos1 = mesh1.position;
-          const distToCenterSq = pos1.lengthSq();
-          if (distToCenterSq > 0.1) {
-            const forceMag =
-              (G * BLACK_HOLE_MASS * SPACESHIP_MASS) / distToCenterSq;
-            const forceDir = pos1.clone().normalize().multiplyScalar(-forceMag);
-            accelerations[id1].add(forceDir);
-          }
-          userIds.forEach((id2) => {
-            if (id1 === id2) return;
-            const mesh2 = state.avatarMeshes[id2];
-            const pos2 = mesh2.position;
-            const distVec = new THREE.Vector3().subVectors(pos2, pos1);
-            const distSq = distVec.lengthSq();
-            if (distSq > 25) {
-              const forceMag =
-                (G *
-                  SPACESHIP_MASS *
-                  SPACESHIP_MASS *
-                  INTER_AVATAR_GRAVITY_SCALE) /
-                distSq;
-              distVec.normalize().multiplyScalar(forceMag);
-              accelerations[id1].add(distVec);
-            }
-          });
-        });
+
         userIds.forEach((id) => {
-          if (id === draggedUserId) return;
           const mesh = state.avatarMeshes[id];
           const physics = state.physicsState[id];
-          if (!physics) return;
-          physics.velocity.add(accelerations[id].multiplyScalar(delta));
-          physics.velocity.multiplyScalar(DAMPING);
-          mesh.position.add(physics.velocity.clone().multiplyScalar(delta));
-          if (mesh.position.length() < EVENT_HORIZON_RADIUS) {
-            const angle = Math.random() * Math.PI * 2;
-            const radius =
-              RESPAWN_RADIUS_MIN +
-              Math.random() * (RESPAWN_RADIUS_MAX - RESPAWN_RADIUS_MIN);
-            const respawnX = Math.cos(angle) * radius;
-            const respawnZ = Math.sin(angle) * radius;
-            mesh.position.set(respawnX, 0, respawnZ);
-            const tangent = new THREE.Vector3(
-              -respawnZ,
-              0,
-              respawnX
-            ).normalize();
-            const speed =
-              Math.sqrt((G * BLACK_HOLE_MASS) / radius) * ORBIT_SPEED_SCALE;
-            physics.velocity.copy(tangent.multiplyScalar(speed));
+          if (!mesh || !physics) return;
+
+          // --- 自分のアバター (currentUser) の処理 ---
+          // ドラッグ中でない自分のアバターは、クライアントサイドで物理演算を行う
+          if (id === currentUser && id !== draggedUserId) {
+            const pos = mesh.position;
+            const vel = physics.velocity;
+            const acceleration = new THREE.Vector3();
+            const distToCenter = pos.length();
+
+            // --- ブラックホールからの影響を、距離に応じて変更 ---
+            if (distToCenter < ORBIT_INFLUENCE_RADIUS) {
+              // --- 軌道周回モード (ブラックホールの近く) ---
+              // この領域では、直接的な重力の代わりに、安定した軌道に乗せる力を加えます。
+
+              // 影響範囲内での進行度 (影響範囲の端で0、安定軌道半径で1に近づく)
+              const influenceFactor = THREE.MathUtils.smoothstep(
+                distToCenter,
+                ORBIT_INFLUENCE_RADIUS,
+                ORBIT_STABLE_RADIUS
+              );
+
+              // a. 理想的な公転速度を計算
+              // 速度が急激に上がらないよう、現在の半径での公転速度を基準にします
+              const orbitSpeed =
+                Math.sqrt((G * BLACK_HOLE_MASS) / distToCenter) *
+                ORBIT_SPEED_SCALE;
+              const tangentDir = new THREE.Vector3(
+                -pos.z,
+                0,
+                pos.x
+              ).normalize();
+              const idealVelocity = tangentDir.multiplyScalar(orbitSpeed);
+
+              // b. 理想速度に滑らかに近づける (Lerp)
+              vel.lerp(
+                idealVelocity,
+                influenceFactor * ORBIT_VELOCITY_LERP_FACTOR
+              );
+
+              // c. 理想半径 (ORBIT_STABLE_RADIUS) に引き寄せる力を加える
+              const radialOffset = distToCenter - ORBIT_STABLE_RADIUS;
+              // バネのように中心方向に力を加える (加速度として)
+              const pullForce = pos
+                .clone()
+                .normalize()
+                .multiplyScalar(-radialOffset * ORBIT_PULL_FORCE);
+              acceleration.add(pullForce.multiplyScalar(influenceFactor));
+            } else {
+              // --- 通常の重力モード (ブラックホールから遠い) ---
+              if (distToCenter > 0.1) {
+                const forceMag =
+                  (G * BLACK_HOLE_MASS * SPACESHIP_MASS) /
+                  (distToCenter * distToCenter);
+                const forceDir = pos
+                  .clone()
+                  .normalize()
+                  .multiplyScalar(-forceMag);
+                acceleration.add(forceDir);
+              }
+            }
+
+            // --- 他のアバターからの重力 (これは常に適用) ---
+            userIds.forEach((otherId) => {
+              if (id === otherId) return;
+              const otherMesh = state.avatarMeshes[otherId];
+              if (!otherMesh) return;
+              const otherPos = otherMesh.position;
+              const distVec = new THREE.Vector3().subVectors(otherPos, pos);
+              const distSq = distVec.lengthSq();
+              // 近すぎるときの異常な力を防ぐ
+              if (distSq > 25) {
+                const forceMag =
+                  (G *
+                    SPACESHIP_MASS *
+                    SPACESHIP_MASS *
+                    INTER_AVATAR_GRAVITY_SCALE) /
+                  distSq;
+                distVec.normalize().multiplyScalar(forceMag);
+                acceleration.add(distVec);
+              }
+            });
+
+            // --- 最終的な速度と位置の更新 ---
+            // 加速度を速度に反映
+            vel.add(acceleration.multiplyScalar(delta));
+
+            // 全体的な速度減衰を適用
+            vel.multiplyScalar(DAMPING);
+
+            // 位置を更新
+            pos.add(vel.clone().multiplyScalar(delta));
+
+            // サーバーに自分の最新位置を送信
+            throttledSendPosition(id, { x: pos.x, y: pos.z });
+          }
+          // --- 他人のアバターの処理 (変更なし) ---
+          else if (id !== currentUser) {
+            const targetPosition = state.targetPositions[id];
+            if (targetPosition) {
+              const lerpFactor = 1.0 - Math.pow(0.01, delta);
+              mesh.position.lerp(targetPosition, lerpFactor);
+              const estimatedVelocity = targetPosition
+                .clone()
+                .sub(mesh.position)
+                .divideScalar(delta);
+              physics.velocity.lerp(estimatedVelocity, lerpFactor * 0.1);
+            }
           }
         });
       }
+      // ▲▲▲ 物理シミュレーションの修正ここまで ▲▲▲
+      // ▲▲▲ 物理シミュレーションと同期ロジックの修正ここまで ▲▲▲
 
       // UI更新
       if (state.camera && containerRef.current) {
         const width = containerRef.current.offsetWidth;
         const height = containerRef.current.offsetHeight;
         Object.values(state.avatarMeshes).forEach((group) => {
-          const element = state.avatarElements[group.userData.userId];
+          const userId = group.userData.userId;
+          const element = state.avatarElements[userId];
           if (element) {
+            // ▼▼▼ 変更点: ここにzIndexを設定するロジックを追加 ▼▼▼
+            // zIndex を直接 DOM 要素に設定して、重なりの順序を制御します。
+            // transform スタイルを持つ要素は新しいスタッキングコンテキストを作成するため、
+            // zIndex はその要素自身（アバターのルート要素）に設定する必要があります。
+            // 優先順位: ドラッグ中のアバター > 自分のアバター > 他のアバター
+            const zIndex =
+              userId === draggedUserId ? 30 : userId === currentUser ? 20 : 10;
+            element.style.zIndex = String(zIndex);
+            // ▲▲▲ 変更ここまで ▲▲▲
+
             const screenPosition = group.position
               .clone()
               .project(state.camera!);
@@ -674,6 +649,7 @@ export default function SpaceStation({
       state.composer?.render();
     };
     animate();
+
     const handleResize = () => {
       if (
         !containerRef.current ||
@@ -698,6 +674,7 @@ export default function SpaceStation({
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- ユーザーの追加/削除/更新 ---
+  // ▼▼▼ このuseEffectフックのロジックを修正 ▼▼▼
   useEffect(() => {
     const state = threeJsState.current;
     if (!state.scene || containerSize.width === 0 || containerSize.height === 0)
@@ -705,7 +682,7 @@ export default function SpaceStation({
 
     const existingUserIds = new Set(users.map((u) => u.id));
 
-    // ユーザー削除の処理 (変更なし)
+    // ユーザー削除の処理
     Object.keys(state.avatarMeshes).forEach((userId) => {
       if (!existingUserIds.has(userId)) {
         if (state.avatarMeshes[userId])
@@ -713,6 +690,7 @@ export default function SpaceStation({
         delete state.avatarMeshes[userId];
         delete state.avatarElements[userId];
         delete state.physicsState[userId];
+        delete state.targetPositions[userId];
       }
     });
 
@@ -728,13 +706,10 @@ export default function SpaceStation({
           velocity: new THREE.Vector3(),
         };
 
-        // --- ▼▼▼ ここから修正 ▼▼▼ ---
-        // 初期位置をサーバーからのワールド座標で設定します。
-        // user.position.y はワールド座標の z に対応します。
+        // 初回位置設定
         if (user.position && (user.position.x !== 0 || user.position.y !== 0)) {
           group.position.set(user.position.x, 0, user.position.y);
         } else {
-          // サーバーに位置情報がない場合のフォールバック（既存のランダム配置ロジック）
           const angle = Math.random() * Math.PI * 2;
           const radius =
             RESPAWN_RADIUS_MIN +
@@ -745,12 +720,12 @@ export default function SpaceStation({
             Math.sin(angle) * radius
           );
         }
-        // --- ▲▲▲ ここまで修正 ▲▲▲ ---
 
-        // 初期速度の設定 (変更なし)
         const position = group.position;
         const dist = position.length();
-        if (dist > 0) {
+
+        // 自分自身が新規参加した場合、初期速度を与える
+        if (user.id === currentUser && dist > 0) {
           const tangent = new THREE.Vector3(
             -position.z,
             0,
@@ -762,36 +737,30 @@ export default function SpaceStation({
             tangent.multiplyScalar(speed)
           );
         }
+
+        // 他のプレイヤーが新規参加した場合、目標位置として設定
+        if (user.id !== currentUser) {
+          state.targetPositions[user.id] = group.position.clone();
+        }
       } else {
-        // --- ▼▼▼ ここから修正 (最重要ポイント) ▼▼▼ ---
-        // --- 既存ユーザーの位置更新処理 ---
-        // 他のユーザーが動かしたアイコンの位置を、自分の画面に反映させます。
-
-        // 自分がドラッグしている最中のアイコンは、サーバーからの情報で上書きしないようにします。
-        if (user.id !== draggedUserId && user.position) {
-          // user.positionはワールド座標なので、そのままVector3に変換します。
-          const targetPosition = new THREE.Vector3(
-            user.position.x,
-            0,
-            user.position.y
-          );
-
-          // サーバーの位置情報に即座に同期します。
-          group.position.copy(targetPosition);
-
-          // 他のユーザーによって動かされている間は、物理的な速度をリセットします。
-          const physics = state.physicsState[user.id];
-          if (physics) {
-            physics.velocity.set(0, 0, 0);
+        // --- 既存ユーザーの「目標位置」を更新 ---
+        // ★★★ ここが重要な変更点 ★★★
+        // 自分(currentUser)とドラッグ中のユーザーはサーバーからの位置情報で更新しない
+        if (user.id !== currentUser && user.id !== draggedUserId) {
+          if (user.position) {
+            // 他のプレイヤーの目標位置をサーバーからの情報で更新する
+            state.targetPositions[user.id] = new THREE.Vector3(
+              user.position.x,
+              0,
+              user.position.y
+            );
           }
         }
-        // --- ▲▲▲ ここまで修正 ▲▲▲ ---
       }
     });
-    // 依存配列に `draggedUserId` を追加して、ドラッグ開始/終了時に再評価されるようにします。
-  }, [users, containerSize, draggedUserId]);
+  }, [users, currentUser, containerSize, draggedUserId]); // currentUserも依存配列に追加
+  // ▲▲▲ useEffectの修正ここまで ▲▲▲
 
-  // --- マウスイベントハンドラー ---
   const handleMouseDown = useCallback((event: React.MouseEvent) => {
     if ((event.target as HTMLElement).closest(".spaceship-anim-container"))
       return;
@@ -820,6 +789,9 @@ export default function SpaceStation({
             const physics = state.physicsState[draggedUserId];
             if (physics) {
               physics.velocity.set(0, 0, 0);
+            }
+            if (state.targetPositions[draggedUserId]) {
+              delete state.targetPositions[draggedUserId];
             }
             throttledSendPosition(draggedUserId, { x: point.x, y: point.z });
           }
@@ -882,7 +854,6 @@ export default function SpaceStation({
         ))}
       </div>
 
-      {/* Tutorial Panel */}
       <AnimatePresence>
         {showTutorial && (
           <motion.div
@@ -893,25 +864,19 @@ export default function SpaceStation({
             className="absolute bottom-8 right-8 pointer-events-auto z-50"
             style={{ maxWidth: "calc(100vw - 64px)" }}
           >
-            {/* 
-              --- ▼▼▼ ここからが修正箇所です ▼▼▼ ---
-              layoutプロパティを持つ親コンテナで、サイズと形状のアニメーションを管理します。
-            */}
             <motion.div
               layout
               transition={{ layout: { duration: 0.4, ease: "easeInOut" } }}
-              // isMinimized状態に応じて角の丸みをアニメーションさせます
               style={{
                 borderRadius: isMinimized ? "9999px" : "16px",
-                overflow: "hidden", // アニメーション中にはみ出ないように
+                overflow: "hidden",
               }}
               className="relative shadow-2xl"
             >
-              {/* AnimatePresenceで、最小化/最大化コンテンツの切り替えを滑らかにします */}
               <AnimatePresence initial={false} mode="wait">
                 {isMinimized ? (
                   <motion.div
-                    key="minimized" // AnimatePresenceが要素を識別するためのキー
+                    key="minimized"
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
@@ -937,28 +902,23 @@ export default function SpaceStation({
                   </motion.div>
                 ) : (
                   <motion.div
-                    key="expanded" // AnimatePresenceが要素を識別するためのキー
+                    key="expanded"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
-                    // w-80クラスを追加して、コンテナの基本幅を指定します
                     className="w-80 bg-gradient-to-br from-purple-900/20 via-blue-900/20 to-indigo-900/20 backdrop-blur-xl border border-white/10 p-6 relative"
                   >
-                    {/* Background decoration */}
                     <div className="absolute inset-0 opacity-30">
                       <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500 rounded-full filter blur-3xl" />
                       <div className="absolute bottom-0 left-0 w-32 h-32 bg-blue-500 rounded-full filter blur-3xl" />
                     </div>
-
                     <div className="relative z-10">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
                           <motion.div
                             className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center"
-                            animate={{
-                              rotate: [0, 360],
-                            }}
+                            animate={{ rotate: [0, 360] }}
                             transition={{
                               duration: 20,
                               repeat: Infinity,
@@ -985,7 +945,7 @@ export default function SpaceStation({
                         <motion.div
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.1 }} // delayを調整
+                          transition={{ delay: 0.1 }}
                           className="flex items-start gap-3 group"
                         >
                           <motion.div
@@ -1007,7 +967,7 @@ export default function SpaceStation({
                         <motion.div
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.2 }} // delayを調整
+                          transition={{ delay: 0.2 }}
                           className="flex items-start gap-3 group"
                         >
                           <motion.div
@@ -1033,7 +993,6 @@ export default function SpaceStation({
                         onClick={() => setIsMinimized(true)}
                         className="mt-4 w-full py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-sm font-medium transition-all border border-white/5 hover:border-white/10 relative overflow-hidden"
                       >
-                        {/* Radar scanning animation */}
                         <motion.div
                           className="absolute top-0 h-full w-16 bg-gradient-to-r from-transparent via-white/20 to-transparent"
                           initial={{ left: "-20%" }}
@@ -1051,7 +1010,6 @@ export default function SpaceStation({
                 )}
               </AnimatePresence>
             </motion.div>
-            {/* --- ▲▲▲ ここまでが修正箇所です ▲▲▲ --- */}
           </motion.div>
         )}
       </AnimatePresence>
