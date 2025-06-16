@@ -4,7 +4,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { Message } from "@/lib/types";
 import {
   AnimatePresence,
   motion,
@@ -29,6 +28,20 @@ import {
   useRef,
   useState,
 } from "react";
+// Message型の定義
+interface Message {
+  id: string;
+  type: "user" | "system";
+  sender: string;
+  content: string;
+  timestamp: string;
+  reactions?: Record<string, string[]>;
+  replyTo?: string;
+  replyContext?: {
+    sender: string;
+    content: string;
+  };
+}
 
 // 時間差を日本語で表示するヘルパー関数
 const formatDistanceToNow = (date: Date): string => {
@@ -72,6 +85,54 @@ const ParticleEffect = ({
       animate={controls}
     >
       <span className="text-2xl">{emoji}</span>
+    </motion.div>
+  );
+};
+
+// 入力パーティクルエフェクト
+const InputParticle = ({ x, y }: { x: number; y: number }) => {
+  const controls = useAnimation();
+
+  useEffect(() => {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 30 + Math.random() * 50;
+    const duration = 0.8 + Math.random() * 0.4;
+
+    controls.start({
+      x: [0, Math.cos(angle) * distance],
+      y: [0, Math.sin(angle) * distance - 20],
+      opacity: [0, 1, 0],
+      scale: [0, 1.5, 0],
+      transition: {
+        duration,
+        ease: "easeOut",
+        times: [0, 0.2, 1],
+      },
+    });
+  }, [controls]);
+
+  return (
+    <motion.div
+      className="absolute pointer-events-none"
+      style={{ left: x - 2, top: y - 2 }}
+      animate={controls}
+    >
+      <div className="w-1 h-1 bg-gradient-to-r from-blue-400 to-violet-400 rounded-full shadow-lg shadow-blue-400/50" />
+    </motion.div>
+  );
+};
+
+// 波紋エフェクト
+const RippleEffect = ({ x, y }: { x: number; y: number }) => {
+  return (
+    <motion.div
+      className="absolute pointer-events-none"
+      style={{ left: x, top: y }}
+      initial={{ scale: 0, opacity: 1 }}
+      animate={{ scale: 4, opacity: 0 }}
+      transition={{ duration: 1, ease: "easeOut" }}
+    >
+      <div className="w-20 h-20 -ml-10 -mt-10 rounded-full border-2 border-blue-400/50" />
     </motion.div>
   );
 };
@@ -165,6 +226,8 @@ export default function ChatInterface({
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [newMessagesCount, setNewMessagesCount] = useState(0);
   const isAtBottomRef = useRef(true);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const inputContainerRef = useRef<HTMLDivElement>(null);
 
   const [isSending, setIsSending] = useState(false);
   const mouseX = useMotionValue(0);
@@ -175,6 +238,101 @@ export default function ChatInterface({
   >([]);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [selectedEmoji, setSelectedEmoji] = useState<string | null>(null);
+
+  // 新しい入力欄関連のstate
+  const [inputParticles, setInputParticles] = useState<
+    Array<{ id: string; x: number; y: number }>
+  >([]);
+  const [ripples, setRipples] = useState<
+    Array<{ id: string; x: number; y: number }>
+  >([]);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const [showInitialRipple, setShowInitialRipple] = useState(true);
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const inputMouseX = useMotionValue(0);
+  const inputMouseY = useMotionValue(0);
+
+  // プレースホルダーアニメーション
+  const placeholderTexts = ["メッセージを入力..."];
+
+  useEffect(() => {
+    if (!isInputFocused && !inputValue) {
+      const interval = setInterval(() => {
+        setPlaceholderIndex((prev) => (prev + 1) % placeholderTexts.length);
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [isInputFocused, inputValue, placeholderTexts.length]);
+
+  // 初期フォーカスと波紋エフェクト
+  useEffect(() => {
+    // 初期フォーカス
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 500);
+
+    // 初期波紋エフェクト
+    if (showInitialRipple && inputContainerRef.current) {
+      const rect = inputContainerRef.current.getBoundingClientRect();
+      const id = `initial-ripple-${Date.now()}`;
+      setRipples([{ id, x: rect.width / 2, y: rect.height / 2 }]);
+      setShowInitialRipple(false);
+
+      setTimeout(() => {
+        setRipples([]);
+      }, 1000);
+    }
+  }, [showInitialRipple]);
+
+  // 入力時のパーティクルエフェクト
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setInputValue(newValue);
+
+    // 文字が追加された時にパーティクルを生成
+    if (newValue.length > inputValue.length && inputContainerRef.current) {
+      const rect = inputContainerRef.current.getBoundingClientRect();
+      const particleCount = 3 + Math.floor(Math.random() * 3);
+
+      for (let i = 0; i < particleCount; i++) {
+        const id = `input-particle-${Date.now()}-${i}`;
+        const x = rect.width * 0.8 + Math.random() * 40;
+        const y = rect.height / 2 + (Math.random() - 0.5) * 20;
+
+        setInputParticles((prev) => [...prev, { id, x, y }]);
+
+        setTimeout(() => {
+          setInputParticles((prev) => prev.filter((p) => p.id !== id));
+        }, 1000);
+      }
+    }
+  };
+
+  // 入力欄のマウストラッキング
+  const handleInputMouseMove = (e: React.MouseEvent) => {
+    if (inputContainerRef.current) {
+      const rect = inputContainerRef.current.getBoundingClientRect();
+      inputMouseX.set(e.clientX - rect.left);
+      inputMouseY.set(e.clientY - rect.top);
+    }
+  };
+
+  // フォーカス時の波紋エフェクト
+  const handleInputFocus = () => {
+    setIsInputFocused(true);
+    if (inputContainerRef.current) {
+      const rect = inputContainerRef.current.getBoundingClientRect();
+      const id = `focus-ripple-${Date.now()}`;
+      setRipples((prev) => [
+        ...prev,
+        { id, x: rect.width / 2, y: rect.height / 2 },
+      ]);
+
+      setTimeout(() => {
+        setRipples((prev) => prev.filter((r) => r.id !== id));
+      }, 1000);
+    }
+  };
 
   const EMOJI_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
   const EMOJI_COLORS: Record<string, string> = {
@@ -305,7 +463,7 @@ export default function ChatInterface({
 
   const handleReplyClick = (message: Message) => {
     setReplyingTo(message);
-    document.getElementById("chat-input")?.focus();
+    inputRef.current?.focus();
   };
 
   const handleReplyJump = (messageId: string) => {
@@ -339,6 +497,58 @@ export default function ChatInterface({
         .highlight-message {
           animation: highlight-pulse 2s ease-out;
           border-radius: 1rem;
+        }
+
+        @keyframes breathe {
+          0%,
+          100% {
+            transform: scale(1);
+            opacity: 0.8;
+          }
+          50% {
+            transform: scale(1.05);
+            opacity: 1;
+          }
+        }
+
+        @keyframes shimmer {
+          0% {
+            background-position: -200% center;
+          }
+          100% {
+            background-position: 200% center;
+          }
+        }
+
+        .breathing-border {
+          animation: breathe 3s ease-in-out infinite;
+        }
+
+        .shimmer-effect {
+          background-size: 200% 100%;
+          animation: shimmer 3s linear infinite;
+        }
+
+        @keyframes cursor-blink {
+          0%,
+          49% {
+            opacity: 1;
+          }
+          50%,
+          100% {
+            opacity: 0;
+          }
+        }
+
+        .animated-cursor::after {
+          content: "|";
+          position: absolute;
+          right: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          animation: cursor-blink 1s infinite;
+          color: #3b82f6;
+          font-weight: bold;
         }
       `}</style>
 
@@ -973,56 +1183,159 @@ export default function ChatInterface({
         </AnimatePresence>
 
         <motion.div
-          className="p-4 border-t border-slate-200/50 dark:border-slate-800/50 bg-gradient-to-b from-white/70 to-white/90 dark:from-slate-900/70 dark:to-slate-900/90 backdrop-blur-xl"
+          className="p-4 border-t border-slate-200/50 dark:border-slate-800/50 bg-gradient-to-b from-white/70 to-white/90 dark:from-slate-900/70 dark:to-slate-900/90 backdrop-blur-xl relative overflow-visible"
           initial={replyingTo ? { y: 0 } : { y: 100 }}
           animate={{ y: 0 }}
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
         >
-          <div className="flex gap-3">
+          <motion.div
+            className="absolute -inset-[4px] rounded-2xl border breathing-border pointer-events-none"
+            style={{
+              background: "linear-gradient(90deg, #fff0f0 0%, #f3f4f6 10%, )",
+              borderColor: "#e5e7eb",
+              opacity: 0.8,
+            }}
+          />
+
+          {/* 入力欄の背景グロー効果 */}
+          <motion.div
+            className="absolute inset-0 -m-4"
+            animate={{
+              background: [
+                "radial-gradient(ellipse at center, rgba(59, 130, 246, 0.1) 0%, transparent 70%)",
+                "radial-gradient(ellipse at center, rgba(147, 51, 234, 0.1) 0%, transparent 70%)",
+                "radial-gradient(ellipse at center, rgba(59, 130, 246, 0.1) 0%, transparent 70%)",
+              ],
+            }}
+            transition={{
+              duration: 4,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+          />
+
+          <div className="flex gap-3 relative z-10">
             <motion.div
+              ref={inputContainerRef}
               className="flex-1 relative"
-              whileFocus={{ scale: 1.01 }}
-              transition={{ type: "spring", stiffness: 400 }}
+              onMouseMove={handleInputMouseMove}
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
             >
-              <Input
-                id="chat-input"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={
-                  replyingTo
-                    ? `${replyingTo.sender}さんへの返信...`
-                    : "メッセージを入力..."
-                }
-                className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 rounded-xl px-4 py-3 pr-12 shadow-sm focus:shadow-xl focus:border-blue-400/50 transition-all duration-200 placeholder:text-slate-400"
-              />
-              {inputValue && (
-                <motion.div
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold bg-gradient-to-r from-blue-600 to-violet-600 dark:from-blue-400 dark:to-violet-400 bg-clip-text text-transparent"
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                >
-                  {inputValue.length}
-                </motion.div>
-              )}
+              {/* 波紋エフェクト */}
+              <AnimatePresence>
+                {ripples.map((ripple) => (
+                  <RippleEffect key={ripple.id} x={ripple.x} y={ripple.y} />
+                ))}
+              </AnimatePresence>
+
+              {/* 入力パーティクル: 文字カーソル位置に表示 */}
+              <AnimatePresence>
+                {inputParticles.map((particle) => {
+                  // カーソル位置取得
+                  let caretX = particle.x;
+                  let caretY = particle.y;
+                  if (inputRef.current) {
+                    const input = inputRef.current;
+                    const value = input.value;
+                    const selectionStart = input.selectionStart ?? value.length;
+                    // テキスト幅計算用のダミーspanを作成
+                    const span = document.createElement("span");
+                    span.style.visibility = "hidden";
+                    span.style.position = "absolute";
+                    span.style.whiteSpace = "pre";
+                    span.style.font = window.getComputedStyle(input).font;
+                    span.textContent = value.slice(0, selectionStart);
+                    document.body.appendChild(span);
+                    const rect = input.getBoundingClientRect();
+                    const spanRect = span.getBoundingClientRect();
+                    // inputのpadding-leftを考慮
+                    const style = window.getComputedStyle(input);
+                    const paddingLeft = parseFloat(style.paddingLeft || "0");
+                    caretX = spanRect.width + paddingLeft;
+                    caretY = rect.height / 2;
+                    document.body.removeChild(span);
+                  }
+                  return (
+                    <InputParticle key={particle.id} x={caretX} y={caretY} />
+                  );
+                })}
+              </AnimatePresence>
+
+              <div className="relative bg-white/95 dark:bg-slate-800/95 rounded-xl overflow-hidden">
+                {/* シマーエフェクト */}
+                <div
+                  className="absolute inset-0 shimmer-effect opacity-30"
+                  style={{
+                    background:
+                      "linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.7) 50%, transparent 60%)",
+                  }}
+                />
+
+                <Input
+                  ref={inputRef}
+                  id="chat-input"
+                  value={inputValue}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  onFocus={handleInputFocus}
+                  onBlur={() => setIsInputFocused(false)}
+                  placeholder={placeholderTexts[placeholderIndex]}
+                  className={`
+                    relative z-10 bg-transparent border-0 rounded-xl px-5 py-4 pr-16 
+                    text-base font-medium shadow-none
+                    focus:outline-none focus:ring-0
+                    placeholder:text-slate-400 dark:placeholder:text-slate-500
+                    transition-all duration-300
+                    ${!inputValue && !isInputFocused ? "animated-cursor" : ""}
+                  `}
+                  style={{
+                    textShadow: isInputFocused
+                      ? "0 0 20px rgba(59, 130, 246, 0.3)"
+                      : "none",
+                  }}
+                />
+
+                {/* 文字数カウンター */}
+                <AnimatePresence>
+                  {inputValue && (
+                    <motion.div
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold"
+                      initial={{ opacity: 0, scale: 0.8, rotate: -180 }}
+                      animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                      exit={{ opacity: 0, scale: 0.8, rotate: 180 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <span className="bg-gradient-to-r from-blue-600 to-violet-600 dark:from-blue-400 dark:to-violet-400 bg-clip-text text-transparent">
+                        {inputValue.length}
+                      </span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </motion.div>
+
+            {/* 送信ボタン */}
             <motion.div
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               transition={{ type: "spring", stiffness: 400 }}
+              initial={{ scale: 0, rotate: -180 }}
+              animate={{ scale: 1, rotate: 0 }}
+              style={{ originX: 0.5, originY: 0.5 }}
             >
               <Button
                 onClick={handleSend}
                 disabled={!inputValue.trim()}
                 className={`
-                relative overflow-hidden rounded-xl px-4 py-3 shadow-xl transition-all duration-300
-                ${
-                  !inputValue.trim()
-                    ? "bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500"
-                    : "bg-gradient-to-r from-blue-500 to-violet-500 hover:from-blue-600 hover:to-violet-600 text-white shadow-blue-500/25"
-                }
-              `}
+                  relative overflow-hidden rounded-xl px-5 py-4 h-auto shadow-2xl transition-all duration-300
+                  ${
+                    !inputValue.trim()
+                      ? "bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500"
+                      : "bg-gradient-to-r from-blue-500 to-violet-500 hover:from-blue-600 hover:to-violet-600 text-white shadow-blue-500/25"
+                  }
+                `}
               >
                 <AnimatePresence mode="wait">
                   {isSending ? (
@@ -1047,13 +1360,32 @@ export default function ChatInterface({
                     </motion.div>
                   )}
                 </AnimatePresence>
+
+                {/* 送信ボタンの波動エフェクト */}
                 {inputValue.trim() && (
-                  <motion.div
-                    className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/30 to-white/0"
-                    initial={{ x: "-100%" }}
-                    animate={{ x: "100%" }}
-                    transition={{ duration: 0.6, repeat: Infinity }}
-                  />
+                  <>
+                    <motion.div
+                      className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/30 to-white/0"
+                      initial={{ x: "-100%" }}
+                      animate={{ x: "100%" }}
+                      transition={{ duration: 0.6, repeat: Infinity }}
+                    />
+                    <motion.div
+                      className="absolute inset-0 rounded-xl"
+                      animate={{
+                        boxShadow: [
+                          "0 0 20px rgba(59, 130, 246, 0.5)",
+                          "0 0 40px rgba(147, 51, 234, 0.5)",
+                          "0 0 20px rgba(59, 130, 246, 0.5)",
+                        ],
+                      }}
+                      transition={{
+                        duration: 2,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                      }}
+                    />
+                  </>
                 )}
               </Button>
             </motion.div>
