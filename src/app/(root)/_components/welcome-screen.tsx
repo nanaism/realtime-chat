@@ -395,6 +395,7 @@ export default function WelcomeScreen() {
   const [username, setUsername] = useState("");
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null); // ★★★ ここを追加 ★★★
 
   // --- ▼▼▼ ここから追加 ▼▼▼ ---
   const [isLoading, setIsLoading] = useState(false);
@@ -414,6 +415,19 @@ export default function WelcomeScreen() {
   const gradientX = useTransform(springX, [-0.5, 0.5], [0, 100]);
   const gradientY = useTransform(springY, [-0.5, 0.5], [0, 100]);
   const background = useMotionTemplate`radial-gradient(circle at ${gradientX}% ${gradientY}%, rgba(59, 130, 246, 0.15), transparent 50%)`;
+
+  // ★★★ ここから追加 ★★★
+  useEffect(() => {
+    // ページのアニメーションが落ち着いたタイミングでフォーカスを当てるため、
+    // 短い遅延を入れるとより確実です。
+    const timer = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+
+    // コンポーネントがアンマウントされる際にタイマーをクリアします
+    return () => clearTimeout(timer);
+  }, []); // 空の依存配列でマウント時に一度だけ実行
+  // ★★★ ここまで追加 ★★★
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -653,8 +667,8 @@ export default function WelcomeScreen() {
                   transition={{ delay: 0.4 }}
                   className="flex flex-col items-center gap-1"
                 >
-                  <p className="text-gray-700 dark:text-gray-400">
-                    重力級のつながり、チャットを超えるリアル体験
+                  <p className="text-gray-700 dark:text-gray-400 font-sans font-bold">
+                    &quot;重力級&quot;のつながり、チャットを超えるリアル
                   </p>
                 </motion.div>
               </CardDescription>
@@ -708,7 +722,7 @@ export default function WelcomeScreen() {
                           >
                             <feature.icon className="h-6 w-6 text-white" />
                           </div>
-                          <span className="text-xs font-medium text-gray-700 dark:text-gray-300 leading-tight">
+                          <span className="text-xs font-medium text-gray-700 dark:text-gray-300 leading-tight font-sans">
                             {feature.label}
                           </span>
                         </div>
@@ -771,7 +785,7 @@ export default function WelcomeScreen() {
                   <div className="space-y-3">
                     <Label
                       htmlFor="username"
-                      className="text-lg font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2"
+                      className="text-lg font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2 font-sans"
                     >
                       表示名
                       <motion.div
@@ -786,8 +800,9 @@ export default function WelcomeScreen() {
                         ✨
                       </motion.div>
                     </Label>
-                    <div className="relative">
+                    <div className="relative font-sans">
                       <Input
+                        ref={inputRef} // ★★★ ここを追加 ★★★
                         id="username"
                         placeholder="あなたの名前は？"
                         value={username}
@@ -833,7 +848,7 @@ export default function WelcomeScreen() {
                           initial={{ opacity: 0, y: -10 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -10 }}
-                          className="text-sm font-medium text-red-500 text-center pt-2"
+                          className="text-sm font-medium text-red-500 text-center pt-2 font-sans"
                           aria-live="polite"
                         >
                           {error}
@@ -896,7 +911,7 @@ export default function WelcomeScreen() {
                         "linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)",
                     }}
                   />
-                  <span className="relative z-10 flex items-center justify-center gap-2">
+                  <span className="relative z-10 flex items-center justify-center gap-2 font-sans">
                     {isLoading ? "認証中..." : "飛び込む"}
                     {!isLoading && (
                       <Zap className="w-4 h-4 transition-all duration-300 group-hover:translate-x-1 group-hover:text-yellow-300" />

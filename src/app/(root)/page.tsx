@@ -1,4 +1,5 @@
-import WelcomeScreen from "@/app/(root)/_components/welcome-screen";
+// 新しく作成したDynamicWelcomeScreenをインポートします
+import DynamicWelcomeScreen from "@/app/(root)/_components/DynamicWelcomeScreen";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -9,7 +10,8 @@ export const metadata: Metadata = {
 export default function Home() {
   return (
     <main>
-      <WelcomeScreen />
+      {/* 動的インポートのロジックを内包したコンポーネントを呼び出します */}
+      <DynamicWelcomeScreen />
     </main>
   );
 }
