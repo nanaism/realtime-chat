@@ -230,16 +230,16 @@ export default function ChatPage() {
               className="flex items-center gap-2 px-3 py-2"
             >
               <MessageSquare className="h-4 w-4" />
-              <span className="hidden sm:inline">チャット</span>
+              <span className="hidden sm:inline font-sans">チャット</span>
             </Button>
             <Button
               variant={activeTab === "users" ? "default" : "outline"}
               size="sm"
               onClick={() => switchTab("users")}
-              className="flex items-center gap-2 px-3 py-2"
+              className="flex items-center gap-2 px-3 py-2 font-sans"
             >
               <Users className="h-4 w-4" />
-              <span className="hidden sm:inline">
+              <span className="hidden sm:inline font-sans">
                 参加人数 ({users.length})
               </span>
             </Button>

@@ -30,10 +30,10 @@ interface SpaceStationProps {
 }
 
 // --- 物理定数 ---
-const G = 25; // 重力定数を下げて、全体的な引力を弱めます
-const BLACK_HOLE_MASS = 25; // ブラックホールの質量を下げます
+const G = 25;
+const BLACK_HOLE_MASS = 25;
 const SPACESHIP_MASS = 1.0;
-const INTER_AVATAR_GRAVITY_SCALE = 0.5; // アバター間の引力も少し弱めます
+const INTER_AVATAR_GRAVITY_SCALE = 0.5;
 
 // --- ビジュアル定数 ---
 const EVENT_HORIZON_RADIUS = 7.5;
@@ -45,16 +45,14 @@ const JET_BASE_RADIUS = 1.0;
 // --- 挙動に関する定数 ---
 const RESPAWN_RADIUS_MIN = 150;
 const RESPAWN_RADIUS_MAX = 220;
-const ORBIT_SPEED_SCALE = 0.6; // 軌道速度を少し抑えめにします
-const DAMPING = 0.98; // 減衰を強くして、速度が上がりすぎないようにします
+const ORBIT_SPEED_SCALE = 0.6;
+const DAMPING = 0.98;
 
-// ▼▼▼ 挙動を「ゆったり」にするための定数調整 ▼▼▼
-const ORBIT_STABLE_RADIUS = 25.0; // 安定して周回させたい半径（降着円盤の少し外側）
-const ORBIT_INFLUENCE_RADIUS = 50.0; // この半径の内側から周回軌道への誘導を開始します
-const ORBIT_PULL_FORCE = 0.5; // 軌道半径に引き寄せる力を調整（弱めて滑らかに）
-const ORBIT_VELOCITY_LERP_FACTOR = 0.03; // 軌道速度にゆっくり合わせるように調整
-// ▲▲▲ 定数の調整ここまで ▲▲▲
-// ▲▲▲ 新しい定数の追加ここまで ▲▲▲
+// --- 挙動を「ゆったり」にするための定数調整 ---
+const ORBIT_STABLE_RADIUS = 25.0;
+const ORBIT_INFLUENCE_RADIUS = 50.0;
+const ORBIT_PULL_FORCE = 0.5;
+const ORBIT_VELOCITY_LERP_FACTOR = 0.03;
 
 // --- カメラコントローラークラス ---
 class CameraController {
@@ -174,7 +172,7 @@ export default function SpaceStation({
   const throttledSendPosition = useRef(
     throttle((userId: string, newPosition: { x: number; y: number }) => {
       onUserMove(userId, newPosition);
-    }, 30) // スロットル時間を少し短くして、位置情報の更新頻度を上げる
+    }, 30)
   ).current;
 
   const cursor = useMemo(() => {
@@ -182,23 +180,10 @@ export default function SpaceStation({
     return "grab";
   }, [draggedUserId, isOrbitingCamera]);
 
+  // ▼▼▼ 変更点: チュートリアルの状態管理を showTutorial のみに集約 ▼▼▼
+  // チュートリアルの表示・非表示をこのstateで管理します
   const [showTutorial, setShowTutorial] = useState(true);
-  const [isMinimized, setIsMinimized] = useState(false);
-  const [hasInteracted, setHasInteracted] = useState(false);
-  useEffect(() => {
-    if (hasInteracted) {
-      const timer = setTimeout(() => setIsMinimized(true), 3000);
-      return () => clearTimeout(timer);
-    } else {
-      const timer = setTimeout(() => setIsMinimized(true), 10000);
-      return () => clearTimeout(timer);
-    }
-  }, [hasInteracted]);
-  useEffect(() => {
-    if ((draggedUserId || isOrbitingCamera) && !hasInteracted) {
-      setHasInteracted(true);
-    }
-  }, [draggedUserId, isOrbitingCamera, hasInteracted]);
+  // ▲▲▲ 変更ここまで ▲▲▲
 
   // --- Three.js初期化 ---
   useEffect(() => {
@@ -459,11 +444,11 @@ export default function SpaceStation({
     const clock = new THREE.Clock();
     const animate = () => {
       requestAnimationFrame(animate);
-      const delta = Math.min(clock.getDelta(), 0.05); // フレーム時間の上限を設定
+      const delta = Math.min(clock.getDelta(), 0.05);
       const time = clock.getElapsedTime();
       state.controls?.update();
 
-      // ビジュアル更新 (変更なし)
+      // (ビジュアル更新、物理シミュレーションのロジックは変更なし)
       if (state.blackHoleGroup) {
         state.blackHoleGroup.rotation.y += delta * 0.02;
         state.blackHoleGroup.children.forEach((child) => {
@@ -489,42 +474,27 @@ export default function SpaceStation({
         );
       }
 
-      // ▼▼▼ 物理シミュレーションと同期ロジック (全面的に修正) ▼▼▼
-      // ▼▼▼ 物理シミュレーションと同期ロジック (ゆったりとした動きに修正) ▼▼▼
       if (
         state.scene &&
         state.avatarMeshes &&
         Object.keys(state.avatarMeshes).length > 0
       ) {
         const userIds = Object.keys(state.avatarMeshes);
-
         userIds.forEach((id) => {
           const mesh = state.avatarMeshes[id];
           const physics = state.physicsState[id];
           if (!mesh || !physics) return;
-
-          // --- 自分のアバター (currentUser) の処理 ---
-          // ドラッグ中でない自分のアバターは、クライアントサイドで物理演算を行う
           if (id === currentUser && id !== draggedUserId) {
             const pos = mesh.position;
             const vel = physics.velocity;
             const acceleration = new THREE.Vector3();
             const distToCenter = pos.length();
-
-            // --- ブラックホールからの影響を、距離に応じて変更 ---
             if (distToCenter < ORBIT_INFLUENCE_RADIUS) {
-              // --- 軌道周回モード (ブラックホールの近く) ---
-              // この領域では、直接的な重力の代わりに、安定した軌道に乗せる力を加えます。
-
-              // 影響範囲内での進行度 (影響範囲の端で0、安定軌道半径で1に近づく)
               const influenceFactor = THREE.MathUtils.smoothstep(
                 distToCenter,
                 ORBIT_INFLUENCE_RADIUS,
                 ORBIT_STABLE_RADIUS
               );
-
-              // a. 理想的な公転速度を計算
-              // 速度が急激に上がらないよう、現在の半径での公転速度を基準にします
               const orbitSpeed =
                 Math.sqrt((G * BLACK_HOLE_MASS) / distToCenter) *
                 ORBIT_SPEED_SCALE;
@@ -534,23 +504,17 @@ export default function SpaceStation({
                 pos.x
               ).normalize();
               const idealVelocity = tangentDir.multiplyScalar(orbitSpeed);
-
-              // b. 理想速度に滑らかに近づける (Lerp)
               vel.lerp(
                 idealVelocity,
                 influenceFactor * ORBIT_VELOCITY_LERP_FACTOR
               );
-
-              // c. 理想半径 (ORBIT_STABLE_RADIUS) に引き寄せる力を加える
               const radialOffset = distToCenter - ORBIT_STABLE_RADIUS;
-              // バネのように中心方向に力を加える (加速度として)
               const pullForce = pos
                 .clone()
                 .normalize()
                 .multiplyScalar(-radialOffset * ORBIT_PULL_FORCE);
               acceleration.add(pullForce.multiplyScalar(influenceFactor));
             } else {
-              // --- 通常の重力モード (ブラックホールから遠い) ---
               if (distToCenter > 0.1) {
                 const forceMag =
                   (G * BLACK_HOLE_MASS * SPACESHIP_MASS) /
@@ -562,8 +526,6 @@ export default function SpaceStation({
                 acceleration.add(forceDir);
               }
             }
-
-            // --- 他のアバターからの重力 (これは常に適用) ---
             userIds.forEach((otherId) => {
               if (id === otherId) return;
               const otherMesh = state.avatarMeshes[otherId];
@@ -571,7 +533,6 @@ export default function SpaceStation({
               const otherPos = otherMesh.position;
               const distVec = new THREE.Vector3().subVectors(otherPos, pos);
               const distSq = distVec.lengthSq();
-              // 近すぎるときの異常な力を防ぐ
               if (distSq > 25) {
                 const forceMag =
                   (G *
@@ -583,22 +544,11 @@ export default function SpaceStation({
                 acceleration.add(distVec);
               }
             });
-
-            // --- 最終的な速度と位置の更新 ---
-            // 加速度を速度に反映
             vel.add(acceleration.multiplyScalar(delta));
-
-            // 全体的な速度減衰を適用
             vel.multiplyScalar(DAMPING);
-
-            // 位置を更新
             pos.add(vel.clone().multiplyScalar(delta));
-
-            // サーバーに自分の最新位置を送信
             throttledSendPosition(id, { x: pos.x, y: pos.z });
-          }
-          // --- 他人のアバターの処理 (変更なし) ---
-          else if (id !== currentUser) {
+          } else if (id !== currentUser) {
             const targetPosition = state.targetPositions[id];
             if (targetPosition) {
               const lerpFactor = 1.0 - Math.pow(0.01, delta);
@@ -612,8 +562,6 @@ export default function SpaceStation({
           }
         });
       }
-      // ▲▲▲ 物理シミュレーションの修正ここまで ▲▲▲
-      // ▲▲▲ 物理シミュレーションと同期ロジックの修正ここまで ▲▲▲
 
       // UI更新
       if (state.camera && containerRef.current) {
@@ -623,16 +571,9 @@ export default function SpaceStation({
           const userId = group.userData.userId;
           const element = state.avatarElements[userId];
           if (element) {
-            // ▼▼▼ 変更点: ここにzIndexを設定するロジックを追加 ▼▼▼
-            // zIndex を直接 DOM 要素に設定して、重なりの順序を制御します。
-            // transform スタイルを持つ要素は新しいスタッキングコンテキストを作成するため、
-            // zIndex はその要素自身（アバターのルート要素）に設定する必要があります。
-            // 優先順位: ドラッグ中のアバター > 自分のアバター > 他のアバター
             const zIndex =
               userId === draggedUserId ? 30 : userId === currentUser ? 20 : 10;
             element.style.zIndex = String(zIndex);
-            // ▲▲▲ 変更ここまで ▲▲▲
-
             const screenPosition = group.position
               .clone()
               .project(state.camera!);
@@ -673,8 +614,7 @@ export default function SpaceStation({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- ユーザーの追加/削除/更新 ---
-  // ▼▼▼ このuseEffectフックのロジックを修正 ▼▼▼
+  // --- ユーザーの追加/削除/更新 (変更なし) ---
   useEffect(() => {
     const state = threeJsState.current;
     if (!state.scene || containerSize.width === 0 || containerSize.height === 0)
@@ -682,7 +622,6 @@ export default function SpaceStation({
 
     const existingUserIds = new Set(users.map((u) => u.id));
 
-    // ユーザー削除の処理
     Object.keys(state.avatarMeshes).forEach((userId) => {
       if (!existingUserIds.has(userId)) {
         if (state.avatarMeshes[userId])
@@ -697,7 +636,6 @@ export default function SpaceStation({
     users.forEach((user) => {
       let group = state.avatarMeshes[user.id];
       if (!group) {
-        // --- 新規ユーザーの追加処理 ---
         group = new THREE.Group();
         group.userData = { userId: user.id };
         state.scene!.add(group);
@@ -706,7 +644,6 @@ export default function SpaceStation({
           velocity: new THREE.Vector3(),
         };
 
-        // 初回位置設定
         if (user.position && (user.position.x !== 0 || user.position.y !== 0)) {
           group.position.set(user.position.x, 0, user.position.y);
         } else {
@@ -724,7 +661,6 @@ export default function SpaceStation({
         const position = group.position;
         const dist = position.length();
 
-        // 自分自身が新規参加した場合、初期速度を与える
         if (user.id === currentUser && dist > 0) {
           const tangent = new THREE.Vector3(
             -position.z,
@@ -738,17 +674,12 @@ export default function SpaceStation({
           );
         }
 
-        // 他のプレイヤーが新規参加した場合、目標位置として設定
         if (user.id !== currentUser) {
           state.targetPositions[user.id] = group.position.clone();
         }
       } else {
-        // --- 既存ユーザーの「目標位置」を更新 ---
-        // ★★★ ここが重要な変更点 ★★★
-        // 自分(currentUser)とドラッグ中のユーザーはサーバーからの位置情報で更新しない
         if (user.id !== currentUser && user.id !== draggedUserId) {
           if (user.position) {
-            // 他のプレイヤーの目標位置をサーバーからの情報で更新する
             state.targetPositions[user.id] = new THREE.Vector3(
               user.position.x,
               0,
@@ -758,11 +689,13 @@ export default function SpaceStation({
         }
       }
     });
-  }, [users, currentUser, containerSize, draggedUserId]); // currentUserも依存配列に追加
-  // ▲▲▲ useEffectの修正ここまで ▲▲▲
+  }, [users, currentUser, containerSize, draggedUserId]);
 
   const handleMouseDown = useCallback((event: React.MouseEvent) => {
-    if ((event.target as HTMLElement).closest(".spaceship-anim-container"))
+    if (
+      (event.target as HTMLElement).closest(".spaceship-anim-container") ||
+      (event.target as HTMLElement).closest(".tutorial-container")
+    )
       return;
     setIsOrbitingCamera(true);
     threeJsState.current.controls?.onMouseDown(event.nativeEvent);
@@ -854,165 +787,127 @@ export default function SpaceStation({
         ))}
       </div>
 
-      <AnimatePresence>
-        {showTutorial && (
-          <motion.div
-            initial={{ opacity: 0, x: 100 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 100 }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
-            className="absolute bottom-8 right-8 pointer-events-auto z-50"
-            style={{ maxWidth: "calc(100vw - 64px)" }}
-          >
+      {/* ▼▼▼ 変更点: チュートリアルUIの表示ロジックを修正 ▼▼▼ */}
+      <div
+        className="absolute bottom-8 right-8 pointer-events-auto z-50 tutorial-container"
+        style={{ maxWidth: "calc(100vw - 64px)" }}
+      >
+        <AnimatePresence mode="wait">
+          {showTutorial ? (
             <motion.div
-              layout
-              transition={{ layout: { duration: 0.4, ease: "easeInOut" } }}
-              style={{
-                borderRadius: isMinimized ? "9999px" : "16px",
-                overflow: "hidden",
-              }}
-              className="relative shadow-2xl"
+              key="tutorial-card"
+              initial={{ opacity: 0, x: 100 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 100, transition: { duration: 0.3 } }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+              className="w-80 bg-gradient-to-br from-purple-900/20 via-blue-900/20 to-indigo-900/20 backdrop-blur-xl border border-white/10 p-6 rounded-2xl shadow-2xl relative"
             >
-              <AnimatePresence initial={false} mode="wait">
-                {isMinimized ? (
-                  <motion.div
-                    key="minimized"
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    transition={{ duration: 0.2 }}
-                    className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-600/20 to-blue-600/20 backdrop-blur-xl border border-white/10 flex items-center justify-center cursor-pointer hover:border-white/20 transition-all hover:shadow-lg hover:shadow-purple-500/20 group"
-                    onClick={() => setIsMinimized(false)}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Sparkles className="w-6 h-6 text-white/80 group-hover:text-white transition-colors" />
+              <div className="absolute inset-0 opacity-30">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500 rounded-full filter blur-3xl" />
+                <div className="absolute bottom-0 left-0 w-32 h-32 bg-blue-500 rounded-full filter blur-3xl" />
+              </div>
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
                     <motion.div
-                      className="absolute inset-0 rounded-full bg-gradient-to-br from-purple-400/30 to-blue-400/30"
-                      animate={{
-                        scale: [1, 1.2, 1],
-                        opacity: [0.3, 0, 0.3],
-                      }}
+                      className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center"
+                      animate={{ rotate: [0, 360] }}
                       transition={{
-                        duration: 2,
+                        duration: 20,
                         repeat: Infinity,
-                        ease: "easeInOut",
+                        ease: "linear",
                       }}
-                    />
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="expanded"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="w-80 bg-gradient-to-br from-purple-900/20 via-blue-900/20 to-indigo-900/20 backdrop-blur-xl border border-white/10 p-6 relative"
+                    >
+                      <Sparkles className="w-4 h-4 text-white" />
+                    </motion.div>
+                    <h3 className="text-white text-lg font-semibold font-sans bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400">
+                      あそびばチュートリアル
+                    </h3>
+                  </div>
+                  <motion.button
+                    whileHover={{ scale: 1.1, rotate: 90 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => setShowTutorial(false)}
+                    className="text-white/40 hover:text-white/80 transition-colors"
                   >
-                    <div className="absolute inset-0 opacity-30">
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500 rounded-full filter blur-3xl" />
-                      <div className="absolute bottom-0 left-0 w-32 h-32 bg-blue-500 rounded-full filter blur-3xl" />
-                    </div>
-                    <div className="relative z-10">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <motion.div
-                            className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center"
-                            animate={{ rotate: [0, 360] }}
-                            transition={{
-                              duration: 20,
-                              repeat: Infinity,
-                              ease: "linear",
-                            }}
-                          >
-                            <Sparkles className="w-4 h-4 text-white" />
-                          </motion.div>
-                          <h3 className="text-white text-lg font-semibold font-sans bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400">
-                            あそびばチュートリアル
-                          </h3>
-                        </div>
-                        <motion.button
-                          whileHover={{ scale: 1.1, rotate: 90 }}
-                          whileTap={{ scale: 0.9 }}
-                          onClick={() => setShowTutorial(false)}
-                          className="text-white/40 hover:text-white/80 transition-colors"
-                        >
-                          <X className="w-5 h-5" />
-                        </motion.button>
-                      </div>
+                    <X className="w-5 h-5" />
+                  </motion.button>
+                </div>
 
-                      <div className="space-y-4">
-                        <motion.div
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.1 }}
-                          className="flex items-start gap-3 group"
-                        >
-                          <motion.div
-                            className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500/20 to-purple-600/20 flex items-center justify-center flex-shrink-0 group-hover:from-purple-500/30 group-hover:to-purple-600/30 transition-all"
-                            whileHover={{ scale: 1.05 }}
-                          >
-                            <Hand className="w-5 h-5 text-purple-400" />
-                          </motion.div>
-                          <div>
-                            <h4 className="text-white/90 font-medium mb-1">
-                              アバターを移動
-                            </h4>
-                            <p className="text-white/60 text-sm leading-relaxed">
-                              自分のアイコンをドラッグして、3D空間内を自由に移動できます
-                            </p>
-                          </div>
-                        </motion.div>
-
-                        <motion.div
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.2 }}
-                          className="flex items-start gap-3 group"
-                        >
-                          <motion.div
-                            className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500/20 to-blue-600/20 flex items-center justify-center flex-shrink-0 group-hover:from-blue-500/30 group-hover:to-blue-600/30 transition-all"
-                            whileHover={{ scale: 1.05 }}
-                          >
-                            <Compass className="w-5 h-5 text-blue-400" />
-                          </motion.div>
-                          <div>
-                            <h4 className="text-white/90 font-medium mb-1">
-                              視点を変更
-                            </h4>
-                            <p className="text-white/60 text-sm leading-relaxed">
-                              背景をドラッグして視点を回転、スクロールでズームイン/アウト
-                            </p>
-                          </div>
-                        </motion.div>
-                      </div>
-
-                      <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => setIsMinimized(true)}
-                        className="mt-4 w-full py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-sm font-medium transition-all border border-white/5 hover:border-white/10 relative overflow-hidden"
-                      >
-                        <motion.div
-                          className="absolute top-0 h-full w-16 bg-gradient-to-r from-transparent via-white/20 to-transparent"
-                          initial={{ left: "-20%" }}
-                          animate={{ left: "120%" }}
-                          transition={{
-                            repeat: Infinity,
-                            duration: 2,
-                            ease: "linear",
-                          }}
-                        />
-                        最小化
-                      </motion.button>
+                <div className="space-y-4">
+                  <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="flex items-start gap-3 group"
+                  >
+                    <motion.div
+                      className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500/20 to-purple-600/20 flex items-center justify-center flex-shrink-0 group-hover:from-purple-500/30 group-hover:to-purple-600/30 transition-all"
+                      whileHover={{ scale: 1.05 }}
+                    >
+                      <Hand className="w-5 h-5 text-purple-400" />
+                    </motion.div>
+                    <div>
+                      <h4 className="text-white/90 font-medium mb-1">
+                        アバターを移動
+                      </h4>
+                      <p className="text-white/60 text-sm leading-relaxed">
+                        自分のアイコンをドラッグして、3D空間内を自由に移動できます
+                      </p>
                     </div>
                   </motion.div>
-                )}
-              </AnimatePresence>
+
+                  <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="flex items-start gap-3 group"
+                  >
+                    <motion.div
+                      className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500/20 to-blue-600/20 flex items-center justify-center flex-shrink-0 group-hover:from-blue-500/30 group-hover:to-blue-600/30 transition-all"
+                      whileHover={{ scale: 1.05 }}
+                    >
+                      <Compass className="w-5 h-5 text-blue-400" />
+                    </motion.div>
+                    <div>
+                      <h4 className="text-white/90 font-medium mb-1">
+                        視点を変更
+                      </h4>
+                      <p className="text-white/60 text-sm leading-relaxed">
+                        背景をドラッグして視点を回転、スクロールでズームイン/アウト
+                      </p>
+                    </div>
+                  </motion.div>
+                </div>
+              </div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          ) : (
+            <motion.div
+              key="reopen-button"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.2 } }}
+              transition={{ duration: 0.2 }}
+              className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-600/20 to-blue-600/20 backdrop-blur-xl border border-white/10 flex items-center justify-center cursor-pointer hover:border-white/20 transition-all hover:shadow-lg hover:shadow-purple-500/20 group"
+              onClick={() => setShowTutorial(true)}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Sparkles className="w-6 h-6 text-white/80 group-hover:text-white transition-colors" />
+              <motion.div
+                className="absolute inset-0 rounded-full bg-gradient-to-br from-purple-400/30 to-blue-400/30"
+                animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0, 0.3] }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+      {/* ▲▲▲ 変更ここまで ▲▲▲ */}
     </div>
   );
 }
