@@ -1,6 +1,31 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 
+// ▼▼▼ 各要素の型定義を追加（可読性向上のため） ▼▼▼
+interface Star {
+  id: number;
+  x: number;
+  y: number;
+  z: number;
+  size: number;
+  brightness: number;
+}
+interface NebulaCloud {
+  id: number;
+  x: number;
+  y: number;
+  scale: number;
+  opacity: number;
+  color: "purple" | "blue" | "pink";
+}
+interface LightStreak {
+  id: number;
+  angle: number;
+  distance: number;
+  length: number;
+  delay: number;
+}
+
 // 宇宙ダイブローディングコンポーネント
 const SpaceDiveLoading = ({ onComplete }: { onComplete: () => void }) => {
   const [phase, setPhase] = useState<"initial" | "diving" | "entering">(
@@ -8,40 +33,14 @@ const SpaceDiveLoading = ({ onComplete }: { onComplete: () => void }) => {
   );
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // --- ▼▼▼ ここから修正 ▼▼▼ ---
-
-  // 型定義 (任意ですが、コードが読みやすくなります)
-  interface Star {
-    id: number;
-    x: number;
-    y: number;
-    z: number;
-    size: number;
-    brightness: number;
-  }
-  interface NebulaCloud {
-    id: number;
-    x: number;
-    y: number;
-    scale: number;
-    opacity: number;
-    color: "purple" | "blue" | "pink";
-  }
-  interface LightStreak {
-    id: number;
-    angle: number;
-    distance: number;
-    length: number;
-    delay: number;
-  }
-
-  // Stateの初期値を空の配列にする
+  // ▼▼▼ ここからが修正箇所 ▼▼▼
+  // Stateの初期値を空配列にし、クライアントサイドで生成
   const [stars, setStars] = useState<Star[]>([]);
   const [nebulaClouds, setNebulaClouds] = useState<NebulaCloud[]>([]);
   const [lightStreaks, setLightStreaks] = useState<LightStreak[]>([]);
 
-  // useEffectを使って、クライアントサイドでのみランダム値を生成する
   useEffect(() => {
+    // このuseEffectはクライアントサイドでのみ実行される
     // スターフィールドの生成
     setStars(
       Array.from({ length: 200 }, (_, i) => ({
@@ -53,7 +52,6 @@ const SpaceDiveLoading = ({ onComplete }: { onComplete: () => void }) => {
         brightness: Math.random() * 0.8 + 0.2,
       }))
     );
-
     // ネビュラ雲の生成
     setNebulaClouds(
       Array.from({ length: 5 }, (_, i) => ({
@@ -67,8 +65,7 @@ const SpaceDiveLoading = ({ onComplete }: { onComplete: () => void }) => {
         ],
       }))
     );
-
-    // 光の筋（ワープ効果）
+    // 光の筋の生成
     setLightStreaks(
       Array.from({ length: 50 }, (_, i) => ({
         id: i,
@@ -78,9 +75,8 @@ const SpaceDiveLoading = ({ onComplete }: { onComplete: () => void }) => {
         delay: Math.random() * 0.5,
       }))
     );
-  }, []); // 空の依存配列で、初回マウント時に一度だけ実行
-
-  // --- ▲▲▲ ここまで修正 ▲▲▲ ---
+  }, []); // 空の依存配列で初回マウント時に一度だけ実行
+  // ▲▲▲ ここまでが修正箇所 ▲▲▲
 
   useEffect(() => {
     const timer1 = setTimeout(() => setPhase("diving"), 500);

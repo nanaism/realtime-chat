@@ -9,48 +9,47 @@ import type { Message } from "@/lib/types";
 import { motion } from "framer-motion";
 import { LogOut, MessageSquare, Users } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+// ▼▼▼ 変更点: useSearchParamsをインポート ▼▼▼
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useChatSocket } from "./_hooks/use-chat-socket";
+import ConnectionError from "./ConnectionError";
 import SpaceDiveLoading from "./SpaceDiveLoading";
 
 export default function ChatPage() {
   const router = useRouter();
+  // ▼▼▼ 変更点: useSearchParamsフックを呼び出す ▼▼▼
+  const searchParams = useSearchParams();
+
   const [username, setUsername] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   const [showUserPanel, setShowUserPanel] = useState(false);
   const [activeTab, setActiveTab] = useState("chat");
-  const [showSpaceDive, setShowSpaceDive] = useState(true);
-  const [minimumLoadTimePassed, setMinimumLoadTimePassed] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-  // ▼▼▼ 変更点: 管理者モードの状態を追加 ▼▼▼
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [isLoaderAnimationComplete, setIsLoaderAnimationComplete] =
+    useState(false);
 
   useEffect(() => {
     const storedUsername = localStorage.getItem("username");
     if (storedUsername) {
       setUsername(storedUsername);
+    } else {
+      router.replace("/");
     }
-
-    // 最低1秒のローディング時間を保証
-    const timer = setTimeout(() => {
-      setMinimumLoadTimePassed(true);
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, []);
+  }, [router]);
 
   const {
     users,
     messages,
     typingUsers,
-    isSocketInitialized,
+    connectionStatus,
+    errorMessage,
     sendMessage,
     sendTypingUpdate,
     sendUserMove,
     sendReaction,
     deleteMessage,
-    // ▼▼▼ 変更点: 管理者用削除関数を受け取る ▼▼▼
     deleteMessageAsAdmin,
     clearChatHistory,
     logout,
@@ -60,22 +59,19 @@ export default function ChatPage() {
     return users.find((user) => user.name === username)?.id || null;
   }, [users, username]);
 
-  // ▼▼▼ 変更点: 裏コマンドと管理者パスワードを定義 ▼▼▼
   const PURGE_COMMAND = "/!purge_chat_history_absolutely_!/";
   const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
 
   const handleSendMessage = () => {
     if (!inputValue.trim() || !username) return;
 
-    // ▼▼▼ 変更点: 管理者モードへの切り替え処理を追加 ▼▼▼
     if (ADMIN_PASSWORD && inputValue === ADMIN_PASSWORD) {
       setIsAdminMode(true);
       setInputValue("");
       alert("管理者モードが有効になりました。");
-      return; // メッセージは送信しない
+      return;
     }
 
-    // ▼▼▼ 裏コマンドの処理を追加 ▼▼▼
     if (inputValue === PURGE_COMMAND) {
       if (
         window.confirm(
@@ -83,16 +79,14 @@ export default function ChatPage() {
         )
       ) {
         clearChatHistory();
-        setInputValue(""); // 入力欄をクリア
+        setInputValue("");
       }
-      return; // 通常のメッセージ送信は行わない
+      return;
     }
-    // ▲▲▲ ここまで追加 ▲▲▲
 
-    // ▼▼▼ 変更: sendMessageにreplyingTo.idを渡す ▼▼▼
     sendMessage(inputValue, replyingTo?.id);
     setInputValue("");
-    setReplyingTo(null); // 送信後にリプライ状態をリセット
+    setReplyingTo(null);
   };
 
   const handleInputChange = (value: string) => {
@@ -101,13 +95,10 @@ export default function ChatPage() {
     sendTypingUpdate(isTyping);
   };
 
-  // ▼▼▼ 変更点: 新しい削除ハンドラを追加 ▼▼▼
   const handleDelete = (messageId: string) => {
     if (isAdminMode) {
-      // 管理者モードなら、管理者用削除関数を呼び出す
       deleteMessageAsAdmin(messageId);
     } else {
-      // 通常モードなら、既存の削除関数を呼び出す（サーバー側で本人か検証される）
       deleteMessage(messageId);
     }
   };
@@ -126,7 +117,6 @@ export default function ChatPage() {
     setInputValue("");
     setShowUserPanel(false);
     setActiveTab("chat");
-    // ▼▼▼ 変更点: 退出時に管理者モードを解除 ▼▼▼
     setIsAdminMode(false);
     router.push("/");
   };
@@ -139,21 +129,29 @@ export default function ChatPage() {
     setActiveTab(tab);
   };
 
-  const handleSpaceDiveComplete = () => {
-    setShowSpaceDive(false);
-  };
+  // ▼▼▼ ここから表示ロジックを修正 ▼▼▼
 
-  const shouldShowLoading =
-    !username ||
-    !isSocketInitialized ||
-    !minimumLoadTimePassed ||
-    showSpaceDive;
-
-  if (shouldShowLoading) {
-    // 2つ目のタブは、useChatSocket内でリダイレクトされるまで、このローディング画面を表示し続ける
-    return <SpaceDiveLoading onComplete={handleSpaceDiveComplete} />;
+  // 0. デバッグ用の強制エラー表示を最優先でチェック
+  const isDebugErrorMode = searchParams.get("force_error") === "true";
+  if (isDebugErrorMode) {
+    return <ConnectionError />;
   }
 
+  // 1. 通常のエラー画面を表示
+  if (connectionStatus === "error") {
+    return <ConnectionError message={errorMessage} />;
+  }
+
+  // 2. ローディング画面を表示
+  const showLoader =
+    !username || connectionStatus !== "connected" || !isLoaderAnimationComplete;
+  if (showLoader) {
+    return (
+      <SpaceDiveLoading onComplete={() => setIsLoaderAnimationComplete(true)} />
+    );
+  }
+
+  // 3. 上記の条件をすべてクリアした場合、チャット画面を表示
   return (
     <motion.div
       className="flex flex-col h-screen bg-zinc-50 dark:bg-zinc-950"
@@ -161,6 +159,7 @@ export default function ChatPage() {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
     >
+      {/* (以降のJSXは変更なし) */}
       <header className="py-4 px-8 flex items-center justify-between border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
         <div className="flex items-center gap-2">
           <span className="text-2xl">🪐</span>
@@ -206,7 +205,6 @@ export default function ChatPage() {
                     setInputValue={handleInputChange}
                     onSendMessage={handleSendMessage}
                     onSendReaction={sendReaction}
-                    // ▼▼▼ 変更点: isAdminMode と新しい削除ハンドラを渡す ▼▼▼
                     isAdminMode={isAdminMode}
                     onDeleteMessage={handleDelete}
                     replyingTo={replyingTo}
@@ -228,7 +226,6 @@ export default function ChatPage() {
                 setInputValue={handleInputChange}
                 onSendMessage={handleSendMessage}
                 onSendReaction={sendReaction}
-                // ▼▼▼ 変更点: isAdminMode と新しい削除ハンドラを渡す ▼▼▼
                 isAdminMode={isAdminMode}
                 onDeleteMessage={handleDelete}
                 replyingTo={replyingTo}

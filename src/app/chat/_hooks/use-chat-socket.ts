@@ -5,8 +5,7 @@ import type {
   Message,
   ServerToClientEvents,
   User,
-} from "@/lib/types"; // 修正: types.tsからインポート
-import { useRouter } from "next/navigation";
+} from "@/lib/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 
@@ -14,18 +13,19 @@ interface UseChatSocketProps {
   username: string | null;
 }
 
+// 接続状態をより明確に定義
+type ConnectionStatus = "connecting" | "connected" | "error";
+
 /**
  * チャットのソケット通信を管理するカスタムフック
- * (チャット履歴・リアクション機能付き)
+ * (接続ロジックとエラーハンドリングを強化した安定版)
  */
 export function useChatSocket({ username }: UseChatSocketProps) {
-  const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [typingUsers, setTypingUsers] = useState<
     { userId: string; name: string }[]
   >([]);
-  const [isSocketInitialized, setIsSocketInitialized] = useState(false);
   const [currentUserSocketId, setCurrentUserSocketId] = useState<string | null>(
     null
   );
@@ -34,31 +34,74 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     ClientToServerEvents
   > | null>(null);
 
+  const [connectionStatus, setConnectionStatus] =
+    useState<ConnectionStatus>("connecting");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // このuseEffectのロジックを全面的に修正
   useEffect(() => {
+    // 1. ユーザー名がない場合は、既存の接続をクリーンアップして処理を終了
     if (!username) {
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
       }
+      // 状態を初期化
+      setConnectionStatus("connecting");
+      setErrorMessage(null);
       return;
     }
 
+    // 2. すでに接続済みの場合は何もしない
     if (socketRef.current?.connected) {
       return;
     }
 
+    // --- ここから接続処理 ---
+    console.log("[useChatSocket] Username provided, attempting to connect...");
+    setConnectionStatus("connecting");
+    setErrorMessage(null);
+
+    // 3. 5秒の接続・ログインタイムアウトを設定
+    // (万が一、login_successイベントが届かない場合に備える)
+    connectionTimeoutRef.current = setTimeout(() => {
+      console.error(
+        "[useChatSocket] Connection or login timed out after 5 seconds."
+      );
+      setConnectionStatus("error");
+      setErrorMessage(
+        "サーバーへの接続がタイムアウトしました。ネットワーク状態を確認し、ページを再読み込みしてください。"
+      );
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    }, 5000);
+
+    const clearConnectionTimeout = () => {
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+        connectionTimeoutRef.current = null;
+      }
+    };
+
+    // 4. ソケットインスタンスの作成とイベントリスナーの設定
     const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(
-      process.env.NEXT_PUBLIC_SOCKET_URL || ""
+      process.env.NEXT_PUBLIC_SOCKET_URL || "",
+      {
+        reconnection: false, // エラー時はページ全体で制御するため自動再接続は無効化
+      }
     );
     socketRef.current = socket;
 
-    // --- イベントリスナーをここでまとめて登録 ---
+    // --- イベントリスナー ---
 
     socket.on("connect", () => {
-      console.log("[useChatSocket] Connected with ID:", socket.id);
-
+      console.log("[useChatSocket] Socket connected with ID:", socket.id);
+      // ログイン情報をサーバーに送信
       const newUser: Omit<User, "id"> = {
-        name: username!,
+        name: username,
         status: "online",
         position: {
           x: Math.random() * 80 + 10,
@@ -67,32 +110,48 @@ export function useChatSocket({ username }: UseChatSocketProps) {
         color: `hsl(${Math.random() * 360}, 70%, 70%)`,
         avatar: `https://api.dicebear.com/7.x/notionists/svg?seed=${username}`,
       };
-      // 接続が確立したら、ログイン情報を送信
       socket.emit("user:login", newUser);
     });
 
-    // ★★★ ログイン成功イベントをリッスン ★★★
     socket.on("user:login_success", (currentUser: User) => {
       console.log("[useChatSocket] Login successful:", currentUser);
+      clearConnectionTimeout(); // ★★★ ログイン成功！タイムアウトを解除
+      setConnectionStatus("connected");
       setCurrentUserSocketId(currentUser.id);
-      setIsSocketInitialized(true); // ここで初期化完了とする
     });
 
-    // ★★★ ログインエラー（重複）イベントをリッスン ★★★
     socket.on("user:login_error", ({ message }: { message: string }) => {
       console.error("[useChatSocket] Login failed:", message);
-
-      // ソケット接続を明示的に切断し、再接続ループを防ぐ
+      clearConnectionTimeout();
+      setConnectionStatus("error");
+      setErrorMessage(message);
       socket.disconnect();
-
-      // エラーメッセージをユーザーに通知
-      alert(message + "\nトップページに戻ります。");
-
-      // ページをリダイレクト (replaceで履歴に残さない)
-      router.replace("/");
     });
 
-    // chat:history と users:update はそのまま
+    socket.on("connect_error", (err) => {
+      console.error(
+        "[useChatSocket] Connection establishment error:",
+        err.message
+      );
+      clearConnectionTimeout();
+      setConnectionStatus("error");
+      setErrorMessage(`サーバーに接続できませんでした: ${err.message}`);
+      socket.disconnect();
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log(`[useChatSocket] Disconnected. Reason: ${reason}`);
+      // 接続が確立する前に切断された場合もエラーとして扱う
+      if (connectionStatus === "connecting") {
+        clearConnectionTimeout();
+        setConnectionStatus("error");
+        setErrorMessage(
+          "サーバーとの接続が確立する前に切断されました。ページを再読み込みしてください。"
+        );
+      }
+      // 正常接続後の切断は、意図したログアウト等の可能性があるため、ここではエラーとしない
+    });
+
     socket.on("chat:history", (history: Message[]) => {
       console.log("[useChatSocket] Received chat history:", history);
       setMessages(history);
@@ -119,7 +178,6 @@ export function useChatSocket({ username }: UseChatSocketProps) {
       });
     });
 
-    // ▼▼▼ ここからリアクション更新のリスナーを追加 ▼▼▼
     socket.on(
       "reaction:update",
       ({
@@ -136,7 +194,6 @@ export function useChatSocket({ username }: UseChatSocketProps) {
         );
       }
     );
-    // ▲▲▲ ここまで追加 ▲▲▲
 
     socket.on("message:deleted", ({ messageId }: { messageId: string }) => {
       console.log(`[useChatSocket] Message ${messageId} deleted.`);
@@ -147,26 +204,22 @@ export function useChatSocket({ username }: UseChatSocketProps) {
 
     socket.on("chat:history_cleared", (systemMessage: Message) => {
       console.log("[useChatSocket] Chat history has been cleared.");
-      setMessages([systemMessage]); // 履歴をシステムメッセージのみで上書き
+      setMessages([systemMessage]);
     });
 
-    socket.on("disconnect", () => {
-      console.log("[useChatSocket] Disconnected.");
-      // ★★★ 状態リセットはlogin_errorで能動的に行うので、ここではシンプルにログ出力のみ
-      // isSocketInitialized などを false にすると、正常なタブ閉じ->再アクセスで問題が起きる可能性があるため
-    });
-
+    // 5. クリーンアップ関数
     return () => {
-      console.log("[useChatSocket] Cleaning up socket connection.");
+      console.log("[useChatSocket] Cleanup: Disconnecting socket.");
+      clearConnectionTimeout();
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
       }
     };
-  }, [username, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [username]); // ★★★ 依存配列を [username] のみに変更！
 
   const sendMessage = useCallback(
-    // ▼▼▼ 変更: replyToを引数に追加 ▼▼▼
     (content: string, replyTo?: string) => {
       if (!content.trim() || !username || !socketRef.current) return;
 
@@ -175,45 +228,41 @@ export function useChatSocket({ username }: UseChatSocketProps) {
         sender: username,
         content: content,
         timestamp: new Date().toISOString(),
-        replyTo, // ここでリプライ先のIDをセット
+        replyTo,
       };
       socketRef.current.emit("message:send", newMessage);
       socketRef.current.emit("user:typing", false);
     },
-    [username]
+    [username] // usernameに依存
   );
 
   const sendTypingUpdate = useCallback((isTyping: boolean) => {
     socketRef.current?.emit("user:typing", isTyping);
-  }, []);
+  }, []); // 依存なし
 
   const sendUserMove = useCallback((newPosition: { x: number; y: number }) => {
     socketRef.current?.emit("user:move", newPosition);
-  }, []);
+  }, []); // 依存なし
 
-  // ▼▼▼ ここからリアクション送信用の関数を追加 ▼▼▼
   const sendReaction = useCallback((messageId: string, emoji: string) => {
     socketRef.current?.emit("reaction:add", { messageId, emoji });
-  }, []);
-  // ▲▲▲ ここまで追加 ▲▲▲
+  }, []); // 依存なし
 
   const deleteMessage = useCallback((messageId: string) => {
     socketRef.current?.emit("message:delete", { messageId });
-  }, []);
+  }, []); // 依存なし
 
-  // ▼▼▼ 変更点: 管理者用の削除関数を追加 ▼▼▼
   const deleteMessageAsAdmin = useCallback((messageId: string) => {
     socketRef.current?.emit("admin:message:delete", { messageId });
-  }, []);
-  // ▲▲▲ 変更点 ▲▲▲
+  }, []); // 依存なし
 
   const clearChatHistory = useCallback(() => {
     socketRef.current?.emit("chat:clear_history");
-  }, []);
+  }, []); // 依存なし
 
   const logout = useCallback(() => {
     socketRef.current?.disconnect();
-  }, []);
+  }, []); // 依存なし
 
   const typingUserNames = typingUsers.map((user) => user.name);
 
@@ -221,14 +270,15 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     users,
     messages,
     typingUsers: typingUserNames,
-    isSocketInitialized,
     currentUserSocketId,
+    connectionStatus,
+    errorMessage,
     sendMessage,
     sendTypingUpdate,
     sendUserMove,
-    sendReaction, // ◀◀◀ 追加
+    sendReaction,
     deleteMessage,
-    deleteMessageAsAdmin, // ◀◀◀ 追加
+    deleteMessageAsAdmin,
     clearChatHistory,
     logout,
   };
