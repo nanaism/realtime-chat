@@ -31,8 +31,6 @@ export default function ChatPage() {
   const [isPageTimedOut, setIsPageTimedOut] = useState(false);
 
   // --- Effects ---
-
-  // 1. ユーザー認証
   useEffect(() => {
     const storedUsername = localStorage.getItem("username");
     if (storedUsername) {
@@ -43,16 +41,15 @@ export default function ChatPage() {
   }, [router]);
 
   // --- Hooks ---
-  // ▼▼▼ useChatSocketから受け取る値をページネーション対応版に更新 ▼▼▼
   const {
     users,
-    messages, // 表示中のメッセージリスト
+    messages,
     typingUsers,
     connectionStatus,
     errorMessage,
-    hasMoreMessages, // さらに過去のメッセージがあるか
-    isFetchingHistory, // 過去メッセージを取得中か
-    fetchHistory, // 過去メッセージを取得する関数
+    hasMoreMessages,
+    isFetchingHistory,
+    fetchHistory,
     sendMessage,
     sendTypingUpdate,
     sendUserMove,
@@ -62,37 +59,29 @@ export default function ChatPage() {
     clearChatHistory,
     logout,
   } = useChatSocket({ username });
-  // ▲▲▲
 
-  // 3. ページレベルでの接続タイムアウト監視 (安全策として維持)
   useEffect(() => {
-    // ユーザー名がない、または接続/エラー/タイムアウト済みの場合は何もしない
     if (!username || connectionStatus !== "connecting" || isPageTimedOut) {
       return;
     }
-    // タイムアウトを少し長めの8秒に設定
     const pageTimeoutId = setTimeout(() => {
       console.error(
         "[ChatPage] Page-level timeout reached. Forcing error view."
       );
-      // ▼▼▼ このタイムアウトが実行されたら、無条件でエラーとする ▼▼▼
       setIsPageTimedOut(true);
-      // ▲▲▲ if文を削除 ▲▲▲
     }, 8000);
 
     return () => clearTimeout(pageTimeoutId);
   }, [username, connectionStatus, isPageTimedOut]);
 
-  // 4. 初回アクセス時に機能説明ダイアログを表示
   useEffect(() => {
-    // 接続が完了した瞬間にダイアログ表示を試みる
     if (connectionStatus === "connected") {
       const hasSeenInfo = sessionStorage.getItem("hasSeenOgaSpaceInfo");
       if (!hasSeenInfo) {
         const timer = setTimeout(() => {
           setIsInfoDialogOpen(true);
           sessionStorage.setItem("hasSeenOgaSpaceInfo", "true");
-        }, 500); // UIに慣れるためのわずかな遅延
+        }, 500);
         return () => clearTimeout(timer);
       }
     }
@@ -100,7 +89,6 @@ export default function ChatPage() {
 
   // --- Memos ---
   const currentUserId = useMemo(() => {
-    // users配列から現在のユーザーのIDを見つける
     return users.find((user) => user.name === username)?.id || null;
   }, [users, username]);
 
@@ -111,6 +99,7 @@ export default function ChatPage() {
   // --- Handlers (useCallbackでメモ化) ---
   const handleSendMessage = useCallback(() => {
     if (!inputValue.trim() || !username) return;
+
     if (ADMIN_PASSWORD && inputValue === ADMIN_PASSWORD) {
       setIsAdminMode(true);
       setInputValue("");
@@ -124,10 +113,11 @@ export default function ChatPage() {
         )
       ) {
         clearChatHistory();
-        setInputValue("");
       }
+      setInputValue("");
       return;
     }
+
     sendMessage(inputValue, replyingTo?.id);
     setInputValue("");
     setReplyingTo(null);
@@ -168,13 +158,11 @@ export default function ChatPage() {
     [sendUserMove]
   );
 
-  // ▼▼▼ 過去ログを読み込むためのハンドラを追加 ▼▼▼
   const handleLoadMore = useCallback(() => {
     if (!isFetchingHistory) {
-      fetchHistory(); // useChatSocketから提供される関数を呼び出す
+      fetchHistory();
     }
   }, [isFetchingHistory, fetchHistory]);
-  // ▲▲▲
 
   const handleLeave = useCallback(() => {
     logout();
@@ -188,7 +176,6 @@ export default function ChatPage() {
 
   // --- Render Logic ---
 
-  // 1. デバッグ用 & 接続エラー/タイムアウト時の表示
   const isDebugErrorMode = searchParams.get("force_error") === "true";
   if (isDebugErrorMode || connectionStatus === "error" || isPageTimedOut) {
     const finalErrorMessage = isPageTimedOut
@@ -197,103 +184,78 @@ export default function ChatPage() {
     return <ConnectionError message={finalErrorMessage} />;
   }
 
-  // 2. ローディング条件をシンプルに定義
   const isLoading = !username || connectionStatus !== "connected";
 
   return (
-    <div className="relative h-screen bg-black">
-      {/* 機能説明ダイアログ (ローディング完了後に表示) */}
+    <div className="relative h-screen overflow-hidden bg-zinc-50 dark:bg-zinc-950">
       <AnimatePresence>
         {isInfoDialogOpen && (
           <InfoDialog onClose={() => setIsInfoDialogOpen(false)} />
         )}
       </AnimatePresence>
 
-      {/* ローディング画面 (isLoadingがtrueの間だけ表示) */}
       <AnimatePresence>{isLoading && <SpaceDiveLoading />}</AnimatePresence>
 
-      {/* メインのチャットUI (ローディング完了後に表示) */}
-      <AnimatePresence>
-        {!isLoading && (
-          <motion.div
-            className="flex flex-col h-full bg-zinc-50 dark:bg-zinc-950"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.2 }} // ローダーが消えるのを少し待つ
-          >
-            <header className="py-4 px-8 flex items-center justify-between border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">🪐</span>
-                <h1 className="text-3xl font-bold tracking-tight font-sans">
-                  <Link
-                    href="/"
-                    className="bg-gradient-to-r from-indigo-300 to-purple-700 bg-clip-text text-transparent relative after:absolute after:bottom-0 after:left-0 after:h-[2px] after:w-0 after:bg-gradient-to-r after:from-indigo-400 after:to-purple-600 hover:after:w-full after:transition-all after:duration-300 hover:from-indigo-400 hover:to-purple-700 transition-all duration-300"
-                  >
-                    Oga Space
-                  </Link>
-                </h1>
-                <span className="text-2xl">✨️</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="text-sm text-zinc-500 dark:text-zinc-400">
-                  {users.length} 人参加中
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setIsInfoDialogOpen(true)}
-                  className="rounded-full text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-                  aria-label="ヘルプ"
-                >
-                  <HelpCircle className="h-5 w-5" />
-                </Button>
-              </div>
-            </header>
+      {/* 
+        メインUIは isLoading フラグでアンマウントされないようにする。
+        代わりに opacity と pointerEvents で表示/非表示と操作可否を制御する。
+        これにより、接続が一時的に切れても入力中のテキストは消えない。
+      */}
+      <motion.div
+        className="flex flex-col h-full"
+        animate={{
+          opacity: isLoading ? 0 : 1,
+          pointerEvents: isLoading ? "none" : "auto",
+        }}
+        transition={{ duration: 0.3 }}
+      >
+        <header className="py-4 px-8 flex items-center justify-between border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">🪐</span>
+            <h1 className="text-3xl font-bold tracking-tight font-sans">
+              <Link
+                href="/"
+                className="bg-gradient-to-r from-indigo-300 to-purple-700 bg-clip-text text-transparent relative after:absolute after:bottom-0 after:left-0 after:h-[2px] after:w-0 after:bg-gradient-to-r after:from-indigo-400 after:to-purple-600 hover:after:w-full after:transition-all after:duration-300 hover:from-indigo-400 hover:to-purple-700 transition-all duration-300"
+              >
+                Oga Space
+              </Link>
+            </h1>
+            <span className="text-2xl">✨️</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="text-sm text-zinc-500 dark:text-zinc-400">
+              {users.length} 人参加中
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsInfoDialogOpen(true)}
+              className="rounded-full text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+              aria-label="ヘルプ"
+            >
+              <HelpCircle className="h-5 w-5" />
+            </Button>
+          </div>
+        </header>
 
-            <div className="flex flex-1 overflow-hidden">
-              <div className="hidden md:block md:w-1/2 lg:w-4/5 border-r dark:border-slate-800">
-                <VirtualSpace
-                  users={users}
-                  currentUser={currentUserId || ""}
-                  onUserMove={handleUserMove}
-                  typingUsers={typingUsers}
-                />
-              </div>
-              <div className="flex flex-col w-full md:w-1/2 lg:w-2/5">
-                <div className="flex-1 overflow-hidden">
-                  <div className="hidden md:block h-full">
-                    <Tabs value={activeTab} className="h-full">
-                      <TabsContent value="chat" className="h-full m-0 p-0">
-                        {/* ▼▼▼ ChatInterfaceに新しいpropsを渡す ▼▼▼ */}
-                        <ChatInterface
-                          messages={messages}
-                          typingUsers={typingUsers}
-                          currentUser={username!}
-                          inputValue={inputValue}
-                          onInputChange={handleInputChange}
-                          onSendMessage={handleSendMessage}
-                          onSendReaction={sendReaction}
-                          isAdminMode={isAdminMode}
-                          onDeleteMessage={handleDelete}
-                          replyingTo={replyingTo}
-                          setReplyingTo={setReplyingTo}
-                          hasMoreMessages={hasMoreMessages}
-                          isFetchingHistory={isFetchingHistory}
-                          onLoadMore={handleLoadMore}
-                        />
-                        {/* ▲▲▲ */}
-                      </TabsContent>
-                      <TabsContent value="users" className="h-full m-0 p-0">
-                        <UserList users={users} typingUsers={typingUsers} />
-                      </TabsContent>
-                    </Tabs>
-                  </div>
-                  <div className="md:hidden h-full">
-                    {/* ▼▼▼ ChatInterfaceに新しいpropsを渡す (モバイル用) ▼▼▼ */}
+        <div className="flex flex-1 overflow-hidden">
+          <div className="hidden md:block md:w-1/2 lg:w-4/5 border-r dark:border-slate-800">
+            <VirtualSpace
+              users={users}
+              currentUser={currentUserId || ""}
+              onUserMove={handleUserMove}
+              typingUsers={typingUsers}
+            />
+          </div>
+          <div className="flex flex-col w-full md:w-1/2 lg:w-2/5">
+            <div className="flex-1 overflow-hidden">
+              <div className="hidden md:block h-full">
+                <Tabs value={activeTab} className="h-full">
+                  <TabsContent value="chat" className="h-full m-0 p-0">
                     <ChatInterface
                       messages={messages}
                       typingUsers={typingUsers}
-                      currentUser={username!}
+                      currentUser={username || ""}
                       inputValue={inputValue}
                       onInputChange={handleInputChange}
                       onSendMessage={handleSendMessage}
@@ -306,67 +268,87 @@ export default function ChatPage() {
                       isFetchingHistory={isFetchingHistory}
                       onLoadMore={handleLoadMore}
                     />
-                    {/* ▲▲▲ */}
-                  </div>
-                </div>
-                <div
-                  className={`md:hidden border-t dark:border-slate-800 ${
-                    showUserPanel ? "block" : "hidden"
-                  }`}
-                >
-                  <UserList users={users} typingUsers={typingUsers} />
-                </div>
+                  </TabsContent>
+                  <TabsContent value="users" className="h-full m-0 p-0">
+                    <UserList users={users} typingUsers={typingUsers} />
+                  </TabsContent>
+                </Tabs>
+              </div>
+              <div className="md:hidden h-full">
+                <ChatInterface
+                  messages={messages}
+                  typingUsers={typingUsers}
+                  currentUser={username || ""}
+                  inputValue={inputValue}
+                  onInputChange={handleInputChange}
+                  onSendMessage={handleSendMessage}
+                  onSendReaction={sendReaction}
+                  isAdminMode={isAdminMode}
+                  onDeleteMessage={handleDelete}
+                  replyingTo={replyingTo}
+                  setReplyingTo={setReplyingTo}
+                  hasMoreMessages={hasMoreMessages}
+                  isFetchingHistory={isFetchingHistory}
+                  onLoadMore={handleLoadMore}
+                />
               </div>
             </div>
+            <div
+              className={`md:hidden border-t dark:border-slate-800 ${
+                showUserPanel ? "block" : "hidden"
+              }`}
+            >
+              <UserList users={users} typingUsers={typingUsers} />
+            </div>
+          </div>
+        </div>
 
-            <footer className="border-t border-gray-200 dark:border-slate-800 py-4 px-8 bg-white dark:bg-slate-900 flex justify-between items-center">
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                表示名： <span className="font-medium">{username}</span>
-              </div>
-              <div className="flex space-x-3">
-                <div className="hidden md:flex space-x-2">
-                  <Button
-                    variant={activeTab === "chat" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => switchTab("chat")}
-                    className="flex items-center gap-2 px-3 py-2"
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                    <span className="hidden sm:inline font-sans">チャット</span>
-                  </Button>
-                  <Button
-                    variant={activeTab === "users" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => switchTab("users")}
-                    className="flex items-center gap-2 px-3 py-2 font-sans"
-                  >
-                    <Users className="h-4 w-4" />
-                    <span className="hidden sm:inline font-sans">
-                      参加人数 ({users.length})
-                    </span>
-                  </Button>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={toggleUserPanel}
-                  className="flex items-center gap-2 px-3 py-2 md:hidden"
-                >
-                  <Users className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleLeave}
-                  className="flex items-center gap-2 px-3 py-2"
-                >
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </div>
-            </footer>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        <footer className="border-t border-gray-200 dark:border-slate-800 py-4 px-8 bg-white dark:bg-slate-900 flex justify-between items-center">
+          <div className="text-sm text-gray-500 dark:text-gray-400">
+            表示名： <span className="font-medium">{username}</span>
+          </div>
+          <div className="flex space-x-3">
+            <div className="hidden md:flex space-x-2">
+              <Button
+                variant={activeTab === "chat" ? "default" : "outline"}
+                size="sm"
+                onClick={() => switchTab("chat")}
+                className="flex items-center gap-2 px-3 py-2"
+              >
+                <MessageSquare className="h-4 w-4" />
+                <span className="hidden sm:inline font-sans">チャット</span>
+              </Button>
+              <Button
+                variant={activeTab === "users" ? "default" : "outline"}
+                size="sm"
+                onClick={() => switchTab("users")}
+                className="flex items-center gap-2 px-3 py-2 font-sans"
+              >
+                <Users className="h-4 w-4" />
+                <span className="hidden sm:inline font-sans">
+                  参加人数 ({users.length})
+                </span>
+              </Button>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleUserPanel}
+              className="flex items-center gap-2 px-3 py-2 md:hidden"
+            >
+              <Users className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLeave}
+              className="flex items-center gap-2 px-3 py-2"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
+        </footer>
+      </motion.div>
     </div>
   );
 }
