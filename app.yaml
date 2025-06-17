@@ -1,5 +1,5 @@
 # Node.jsランタイムを指定
-runtime: nodejs
+runtime: custom
 
 # 長時間接続やWebSocketをサポートするフレキシブル環境を選択
 env: flex
