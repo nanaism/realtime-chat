@@ -59,7 +59,6 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     }
 
     // --- ここから接続処理 ---
-    console.log("[useChatSocket] Username provided, attempting to connect...");
     setConnectionStatus("connecting");
     setErrorMessage(null);
 
@@ -98,7 +97,6 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     // --- イベントリスナー ---
 
     socket.on("connect", () => {
-      console.log("[useChatSocket] Socket connected with ID:", socket.id);
       // ログイン情報をサーバーに送信
       const newUser: Omit<User, "id"> = {
         name: username,
@@ -114,7 +112,6 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     });
 
     socket.on("user:login_success", (currentUser: User) => {
-      console.log("[useChatSocket] Login successful:", currentUser);
       clearConnectionTimeout(); // ★★★ ログイン成功！タイムアウトを解除
       setConnectionStatus("connected");
       setCurrentUserSocketId(currentUser.id);
@@ -139,8 +136,7 @@ export function useChatSocket({ username }: UseChatSocketProps) {
       socket.disconnect();
     });
 
-    socket.on("disconnect", (reason) => {
-      console.log(`[useChatSocket] Disconnected. Reason: ${reason}`);
+    socket.on("disconnect", () => {
       // 接続が確立する前に切断された場合もエラーとして扱う
       if (connectionStatus === "connecting") {
         clearConnectionTimeout();
@@ -153,12 +149,10 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     });
 
     socket.on("chat:history", (history: Message[]) => {
-      console.log("[useChatSocket] Received chat history:", history);
       setMessages(history);
     });
 
     socket.on("users:update", (updatedUsers: User[]) => {
-      console.log("[useChatSocket] Received users:update", updatedUsers);
       setUsers(updatedUsers);
     });
 
@@ -196,20 +190,17 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     );
 
     socket.on("message:deleted", ({ messageId }: { messageId: string }) => {
-      console.log(`[useChatSocket] Message ${messageId} deleted.`);
       setMessages((prevMessages) =>
         prevMessages.filter((msg) => msg.id !== messageId)
       );
     });
 
     socket.on("chat:history_cleared", (systemMessage: Message) => {
-      console.log("[useChatSocket] Chat history has been cleared.");
       setMessages([systemMessage]);
     });
 
     // 5. クリーンアップ関数
     return () => {
-      console.log("[useChatSocket] Cleanup: Disconnecting socket.");
       clearConnectionTimeout();
       if (socketRef.current) {
         socketRef.current.disconnect();
