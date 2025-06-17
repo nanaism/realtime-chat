@@ -32,11 +32,10 @@ try {
 
   if (process.env.NODE_ENV === "production") {
     admin.initializeApp({
-      credential: admin.credential.applicationDefault(),
       databaseURL: databaseURL,
     });
     console.log(
-      "✅ Firebase Admin SDK initialized for PRODUCTION environment."
+      "✅ Firebase Admin SDK initialized for PRODUCTION environment using default credentials."
     );
   } else {
     const serviceAccountPath = new URL(
@@ -86,6 +85,10 @@ app.prepare().then(() => {
   const io = new Server(server, {
     pingInterval: 25000,
     pingTimeout: 60000,
+    cors: {
+      origin: "https://oga-realtime-chat.web.app", // ★ 本番フロントエンドのURLを許可
+      methods: ["GET", "POST"], // ★ 許可するHTTPメソッド
+    },
   });
 
   io.engine.on("connection_error", (err) => {

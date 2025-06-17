@@ -32,7 +32,6 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/server.js ./server.js
 # Copy the service account key
-COPY --from=builder /app/serviceAccountKey.json ./serviceAccountKey.json
 
 
 # Expose the port the app runs on
