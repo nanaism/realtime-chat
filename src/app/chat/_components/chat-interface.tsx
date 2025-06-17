@@ -2,7 +2,6 @@
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   AnimatePresence,
@@ -28,6 +27,9 @@ import {
   useRef,
   useState,
 } from "react";
+// ▼▼▼ 変更: react-textarea-autosize をインポート ▼▼▼
+import TextareaAutosize from "react-textarea-autosize";
+
 // Message型の定義
 interface Message {
   id: string;
@@ -226,7 +228,8 @@ export default function ChatInterface({
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [newMessagesCount, setNewMessagesCount] = useState(0);
   const isAtBottomRef = useRef(true);
-  const inputRef = useRef<HTMLInputElement>(null);
+  // ▼▼▼ 変更: inputRef の型を HTMLTextAreaElement に変更 ▼▼▼
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const inputContainerRef = useRef<HTMLDivElement>(null);
 
   const [isSending, setIsSending] = useState(false);
@@ -284,8 +287,8 @@ export default function ChatInterface({
     }
   }, [showInitialRipple]);
 
-  // 入力時のパーティクルエフェクト
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ▼▼▼ 変更: イベントの型を HTMLTextAreaElement に変更 ▼▼▼
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
     setInputValue(newValue);
 
@@ -407,7 +410,9 @@ export default function ChatInterface({
     }
   }, [handleScroll]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  // ▼▼▼ 変更: キーイベントの型を HTMLTextAreaElement に変更 ▼▼▼
+  // ロジック: Shift+EnterでないEnterキー押下時のみ送信。それ以外はデフォルトの挙動（改行など）
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSend();
@@ -529,6 +534,8 @@ export default function ChatInterface({
           animation: shimmer 3s linear infinite;
         }
 
+        /* ▼▼▼ 削除: テキストエリアでは不要なため ▼▼▼ */
+        /*
         @keyframes cursor-blink {
           0%,
           49% {
@@ -549,6 +556,12 @@ export default function ChatInterface({
           animation: cursor-blink 1s infinite;
           color: #3b82f6;
           font-weight: bold;
+        }
+        */
+
+        /* ▼▼▼ 追加: 改行を正しく表示するためのスタイル ▼▼▼ */
+        .whitespace-pre-wrap {
+          white-space: pre-wrap;
         }
       `}</style>
 
@@ -672,7 +685,8 @@ export default function ChatInterface({
                                 <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-white/20 opacity-50" />
                               )}
                               <div
-                                className={`relative z-10 break-words ${
+                                className={`relative z-10 break-words whitespace-pre-wrap ${
+                                  // ◀◀◀ `whitespace-pre-wrap` を追加して改行を反映
                                   message.sender !== currentUser
                                     ? "text-slate-700 dark:text-slate-200"
                                     : ""
@@ -1214,7 +1228,7 @@ export default function ChatInterface({
             }}
           />
 
-          <div className="flex gap-3 relative z-10">
+          <div className="flex gap-3 items-end relative z-10">
             <motion.div
               ref={inputContainerRef}
               className="flex-1 relative"
@@ -1273,7 +1287,8 @@ export default function ChatInterface({
                   }}
                 />
 
-                <Input
+                {/* ▼▼▼ 変更: Input を TextareaAutosize に置き換え ▼▼▼ */}
+                <TextareaAutosize
                   ref={inputRef}
                   id="chat-input"
                   value={inputValue}
@@ -1282,13 +1297,15 @@ export default function ChatInterface({
                   onFocus={handleInputFocus}
                   onBlur={() => setIsInputFocused(false)}
                   placeholder={placeholderTexts[placeholderIndex]}
+                  minRows={1}
+                  maxRows={8}
                   className={`
                     relative z-10 bg-transparent border-0 rounded-xl px-5 py-4 pr-16 
                     text-base font-medium shadow-none
                     focus:outline-none focus:ring-0
                     placeholder:text-slate-400 dark:placeholder:text-slate-500
                     transition-all duration-300
-                    ${!inputValue && !isInputFocused ? "animated-cursor" : ""}
+                    resize-none w-full
                   `}
                   style={{
                     textShadow: isInputFocused
@@ -1301,7 +1318,7 @@ export default function ChatInterface({
                 <AnimatePresence>
                   {inputValue && (
                     <motion.div
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold"
+                      className="absolute right-4 bottom-3 text-xs font-bold"
                       initial={{ opacity: 0, scale: 0.8, rotate: -180 }}
                       animate={{ opacity: 1, scale: 1, rotate: 0 }}
                       exit={{ opacity: 0, scale: 0.8, rotate: 180 }}
@@ -1390,6 +1407,25 @@ export default function ChatInterface({
               </Button>
             </motion.div>
           </div>
+          {/* ▼▼▼ 追加: 改行方法のガイド ▼▼▼ */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{
+              opacity: isInputFocused ? 1 : 0,
+              y: isInputFocused ? 0 : 10,
+            }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="text-center text-xs text-slate-500 dark:text-slate-400 mt-3 font-sans"
+          >
+            <kbd className="px-1.5 py-1 text-xs font-semibold text-slate-700 bg-white/80 border border-slate-200/80 rounded-md dark:bg-slate-900/80 dark:text-slate-200 dark:border-slate-700/80 shadow-sm backdrop-blur-sm">
+              Shift
+            </kbd>
+            <span className="mx-1 font-sans">+</span>
+            <kbd className="px-1.5 py-1 text-xs font-semibold text-slate-700 bg-white/80 border border-slate-200/80 rounded-md dark:bg-slate-900/80 dark:text-slate-200 dark:border-slate-700/80 shadow-sm backdrop-blur-sm">
+              Enter
+            </kbd>
+            <span className="ml-1.5">で改行</span>
+          </motion.div>
         </motion.div>
       </motion.div>
     </>
