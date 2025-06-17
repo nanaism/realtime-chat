@@ -55,7 +55,7 @@ const handle = app.getRequestHandler();
 const users = new Map();
 
 // ログイン時に取得する履歴の件数を定義
-const HISTORY_LIMIT = 100;
+const HISTORY_LIMIT = 10000;
 
 app.prepare().then(() => {
   const server = createServer((req, res) => {

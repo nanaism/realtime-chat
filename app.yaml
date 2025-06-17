@@ -1,25 +1,25 @@
-# app.yaml
+# Node.jsランタイムを指定
+runtime: nodejs
 
-runtime: custom
+# 長時間接続やWebSocketをサポートするフレキシブル環境を選択
 env: flex
 
+# Socket.IOのために、同じユーザーからの接続は同じインスタンスに送る設定
+# これが非常に重要です
 network:
   session_affinity: true
 
-# このセクションを追加または編集
-env_variables:
-  # ここに、デプロイ後に公開されるあなたのアプリのURLを記載します
-  # 通常は "https://[あなたのプロジェクトID].an.r.appspot.com" という形式です
-  NEXT_PUBLIC_WS_URL: "https://socketio-app-462715.an.r.appspot.com"
-
+# コンピューティングリソースの設定（最初は最小でOK）
 resources:
   cpu: 4
   memory_gb: 4
   disk_size_gb: 100
 
-automatic_scaling:
-  min_num_instances: 1
-  max_num_instances: 2
-  cool_down_period_sec: 180
-  cpu_utilization:
-    target_utilization: 0.7
+# ヘルスチェックの設定
+# Next.jsが起動するまで時間がかかることがあるので、少し長めに設定
+health_check:
+  enable_health_check: True
+  check_interval_sec: 30
+  timeout_sec: 10
+  unhealthy_threshold: 4
+  healthy_threshold: 2

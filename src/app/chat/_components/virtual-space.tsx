@@ -789,7 +789,7 @@ export default function SpaceStation({
 
       {/* ▼▼▼ 変更点: チュートリアルUIの表示ロジックを修正 ▼▼▼ */}
       <div
-        className="absolute bottom-8 right-8 pointer-events-auto z-50 tutorial-container"
+        className="absolute bottom-8 right-8 pointer-events-auto z-40 tutorial-container"
         style={{ maxWidth: "calc(100vw - 64px)" }}
       >
         <AnimatePresence mode="wait">
