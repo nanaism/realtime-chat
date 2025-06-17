@@ -490,7 +490,7 @@ const UserMessageItem = memo(function UserMessageItem({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
-      className="chat-message relative rounded-2xl"
+      className="chat-message relative rounded-2xl mb-8"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -890,7 +890,7 @@ export default function ChatInterface({
         if (!item) return 120;
         switch (item.type) {
           case "user":
-            return item.replyTo ? 180 : 120;
+            return item.replyTo ? 210 : 150;
           case "system":
             return 50;
           case "grouped-system":

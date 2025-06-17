@@ -56,7 +56,6 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     }
 
     // --- 接続処理開始 ---
-    console.log("[useChatSocket] Attempting to connect...");
     setConnectionStatus("connecting");
     setErrorMessage(null);
 
@@ -94,7 +93,6 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     // --- イベントリスナー ---
 
     socket.on("connect", () => {
-      console.log("[useChatSocket] Socket connected with ID:", socket.id);
       const newUser: Omit<User, "id"> = {
         name: username,
         status: "online",
@@ -106,14 +104,12 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     });
 
     socket.on("user:login_success", (currentUser: User) => {
-      console.log("[useChatSocket] Login successful:", currentUser);
       clearConnectionTimeout(); // ★★★ ログイン成功！タイムアウトを解除
       setCurrentUserSocketId(currentUser.id);
       setConnectionStatus("connected"); // ★★★ この時点で接続完了とみなす
     });
 
     socket.on("chat:history", (history: Message[]) => {
-      console.log("[useChatSocket] Received chat history:", history);
       setMessages(history);
     });
 
@@ -136,8 +132,7 @@ export function useChatSocket({ username }: UseChatSocketProps) {
       socket.disconnect();
     });
 
-    socket.on("disconnect", (reason) => {
-      console.log(`[useChatSocket] Disconnected. Reason: ${reason}`);
+    socket.on("disconnect", () => {
       if (connectionStatus === "connecting") {
         clearConnectionTimeout();
         setConnectionStatus("error");
@@ -173,7 +168,6 @@ export function useChatSocket({ username }: UseChatSocketProps) {
 
     // 5. クリーンアップ関数
     return () => {
-      console.log("[useChatSocket] Cleanup: Disconnecting socket.");
       clearConnectionTimeout();
       if (socketRef.current) {
         socketRef.current.disconnect();

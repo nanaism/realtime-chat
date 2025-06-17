@@ -16,8 +16,7 @@ import { Label } from "@/components/ui/label";
 import {
   AnimatePresence,
   motion,
-  useAnimate,
-  useAnimationControls, // ★★★ アニメーション制御のために追加
+  useAnimationControls,
   useMotionTemplate,
   useMotionValue,
   useSpring,
@@ -405,13 +404,13 @@ export default function WelcomeScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const buttonRippleControls = useAnimationControls();
-  // ★★★ 提案1: 入力欄の初期アニメーションを制御
   const inputIntroControls = useAnimationControls();
 
-  // ★★★ 提案2: プレースホルダーアニメーション用の状態とフック
   const [isPlaceholderVisible, setIsPlaceholderVisible] = useState(true);
   const placeholderText = "あなたの名前は？";
-  const [scope, animate] = useAnimate();
+
+  // ★★★ 修正1: アニメーション制御用のstateを追加
+  const [startTypingAnimation, setStartTypingAnimation] = useState(false);
 
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
@@ -428,25 +427,18 @@ export default function WelcomeScreen() {
   const background = useMotionTemplate`radial-gradient(circle at ${gradientX}% ${gradientY}%, rgba(59, 130, 246, 0.15), transparent 50%)`;
 
   useEffect(() => {
-    // ★★★ ページ全体の登場アニメーションが終わるのを待ってから入力欄の演出を開始
     const introTimer = setTimeout(() => {
       inputRef.current?.focus();
-      // ★★★ 提案1: 波紋＆スポットライトアニメーションを発火
       inputIntroControls.start("animate");
 
-      // ★★★ 提案2: タイピングプレースホルダーアニメーションを開始
-      animate(
-        "span",
-        { opacity: 1 },
-        { duration: 0.1, delay: (i) => i * 0.07 + 0.5 } // 0.5秒遅らせて波紋の後に開始
-      );
-    }, 1200); // カードの登場アニメーション(0.8s) + α
+      // ★★★ 修正2: stateを更新してアニメーションをトリガー
+      setStartTypingAnimation(true);
+    }, 1200);
 
     return () => clearTimeout(introTimer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 背景アニメーションやマウス追従のuseEffectは変更なし
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (containerRef.current) {
@@ -598,7 +590,6 @@ export default function WelcomeScreen() {
     },
   ];
 
-  // ★★★ 提案1: 波紋＆スポットライトアニメーションの定義
   const inputIntroVariants: Variants = {
     initial: {
       scale: 1,
@@ -615,9 +606,7 @@ export default function WelcomeScreen() {
   };
 
   return (
-    // JSX全体構造は変更なし
     <div className="min-h-screen bg-white dark:bg-slate-900 overflow-hidden relative flex items-center justify-center p-4">
-      {/* ...背景要素は変更なし... */}
       <div className="fixed inset-0 bg-gradient-to-br from-blue-50/50 via-white to-purple-50/50 dark:from-slate-900 dark:via-gray-900 dark:to-purple-900/20" />
       <motion.div className="fixed inset-0 opacity-30" style={{ background }} />
       <div className="fixed inset-0 backdrop-blur-[100px]" />
@@ -640,7 +629,6 @@ export default function WelcomeScreen() {
           }}
           className="relative"
         >
-          {/* ...Cardより上のモーションは変更なし... */}
           <motion.div
             className="absolute -inset-20 rounded-3xl opacity-40"
             animate={{
@@ -655,7 +643,6 @@ export default function WelcomeScreen() {
           />
 
           <Card className="w-full max-w-md backdrop-blur-xl bg-white/70 dark:bg-white/5 shadow-[0_8px_32px_rgba(59,130,246,0.15)] border border-white/20 overflow-visible relative">
-            {/* ...Card内のヘッダー部分は変更なし... */}
             <div className="absolute -top-10 -right-10 w-40 h-40 pointer-events-none">
               <Lottie
                 animationData={floatingOrbAnimation}
@@ -714,7 +701,6 @@ export default function WelcomeScreen() {
             </CardHeader>
 
             <CardContent className="space-y-6 relative z-10">
-              {/* ...features部分は変更なし... */}
               <div className="flex flex-wrap justify-center gap-4 py-4">
                 {features.map((feature) => (
                   <motion.div
@@ -842,7 +828,6 @@ export default function WelcomeScreen() {
                       </motion.div>
                     </Label>
                     <div className="relative font-sans">
-                      {/* ★★★ 提案1: 波紋＆スポットライトエフェクト用の要素 */}
                       <motion.div
                         className="absolute -inset-0.5 rounded-xl border-2 border-blue-400 pointer-events-none"
                         variants={inputIntroVariants}
@@ -850,34 +835,41 @@ export default function WelcomeScreen() {
                         animate={inputIntroControls}
                       />
 
-                      {/* ★★★ 提案2: タイピングプレースホルダー */}
-                      <div ref={scope}>
-                        {isPlaceholderVisible && (
-                          <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none text-lg text-gray-400 dark:text-gray-500 z-10">
-                            {placeholderText.split("").map((char, i) => (
-                              <motion.span key={i} style={{ opacity: 0 }}>
-                                {char}
-                              </motion.span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      {isPlaceholderVisible && (
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none text-lg text-gray-400 dark:text-gray-500 z-10">
+                          {placeholderText.split("").map((char, i) => (
+                            // ★★★ 修正3: stateを使ってアニメーションを宣言的に制御
+                            <motion.span
+                              key={i}
+                              initial={{ opacity: 0 }}
+                              animate={{
+                                opacity: startTypingAnimation ? 1 : 0,
+                              }}
+                              transition={{
+                                duration: 0.1,
+                                delay: startTypingAnimation
+                                  ? i * 0.07 + 0.5
+                                  : 0,
+                              }}
+                            >
+                              {char}
+                            </motion.span>
+                          ))}
+                        </div>
+                      )}
 
                       <MotionInput
                         ref={inputRef}
                         id="username"
-                        // ★★★ プレースホルダーを空にしてアニメーションと置き換え
                         placeholder=""
                         value={username}
                         onChange={(e) => {
                           setUsername(e.target.value);
-                          // ★★★ 入力状態に応じてプレースホルダーの表示を切り替え
                           setIsPlaceholderVisible(e.target.value === "");
                           if (error) setError(null);
                         }}
                         required
                         disabled={isLoading}
-                        // ★★★ 提案3: カスタムキャレットカラーと脈動エフェクト
                         className="font-sans  caret-blue-500 dark:caret-blue-400 backdrop-blur-sm bg-white/60 dark:bg-white/10 border-white/30 hover:border-blue-300/50 focus:border-blue-500/50 pl-4 pr-12 py-6 text-lg rounded-xl shadow-inner w-full relative"
                         whileFocus={{
                           boxShadow: [
@@ -935,7 +927,6 @@ export default function WelcomeScreen() {
                     </AnimatePresence>
                   </div>
                 </div>
-                {/* ...フォームのホバーエフェクトは変更なし... */}
                 <motion.div
                   className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none"
                   variants={{ hover: { opacity: 1 }, initial: { opacity: 0 } }}
@@ -959,7 +950,6 @@ export default function WelcomeScreen() {
             </CardContent>
 
             <CardFooter className="relative z-10">
-              {/* ...フッター部分は変更なし... */}
               <motion.div
                 className="w-full"
                 whileHover={{
