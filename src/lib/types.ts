@@ -76,4 +76,8 @@ export interface ClientToServerEvents {
   "reaction:add": (data: { messageId: string; emoji: string }) => void;
   "message:delete": (data: { messageId: string }) => void;
   "chat:clear_history": () => void;
+
+  // ▼▼▼ 変更点: 管理者用のメッセージ削除イベントを追加 ▼▼▼
+  "admin:message:delete": (data: { messageId: string }) => void;
+  // ▲▲▲ 変更点 ▲▲▲
 }

@@ -231,6 +231,31 @@ app.prepare().then(() => {
       }
     });
 
+    // ▼▼▼ 変更点: 管理者用のメッセージ削除イベントハンドラを追加 ▼▼▼
+    /**
+     * 管理者によるメッセージ削除リクエストの処理
+     */
+    socket.on("admin:message:delete", ({ messageId }) => {
+      const user = users.get(socket.id);
+      if (!user) return; // ユーザー情報がない場合は何もしない
+
+      // 管理者モードの削除では、誰がリクエストしたかのチェックは行わない
+      const messageIndex = messageHistory.findIndex((m) => m.id === messageId);
+      if (messageIndex !== -1) {
+        // messageHistory からメッセージを削除
+        messageHistory.splice(messageIndex, 1);
+
+        // 全クライアントに削除を通知
+        io.emit("message:deleted", { messageId });
+        console.log(`管理者によるメッセージ削除: ${messageId} by ${user.name}`);
+      } else {
+        console.log(
+          `管理者による削除リクエスト失敗: メッセージが見つかりません (${messageId}) by ${user.name}`
+        );
+      }
+    });
+    // ▲▲▲ 変更点 ▲▲▲
+
     /**
      * 全履歴削除リクエストの処理（裏コマンド用）
      */

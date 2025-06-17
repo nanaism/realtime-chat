@@ -210,6 +210,8 @@ interface ChatInterfaceProps {
   onDeleteMessage: (messageId: string) => void;
   replyingTo: Message | null;
   setReplyingTo: (message: Message | null) => void;
+  // ▼▼▼ 変更点: isAdminMode を props に追加 ▼▼▼
+  isAdminMode: boolean;
 }
 
 export default function ChatInterface({
@@ -223,6 +225,8 @@ export default function ChatInterface({
   onDeleteMessage,
   replyingTo,
   setReplyingTo,
+  // ▼▼▼ 変更点: isAdminMode を受け取る ▼▼▼
+  isAdminMode,
 }: ChatInterfaceProps) {
   // 1. StateとRefの準備
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -294,13 +298,12 @@ export default function ChatInterface({
 
     // 文字が追加された時にパーティクルを生成
     if (newValue.length > inputValue.length && inputContainerRef.current) {
-      const rect = inputContainerRef.current.getBoundingClientRect();
       const particleCount = 3 + Math.floor(Math.random() * 3);
 
       for (let i = 0; i < particleCount; i++) {
         const id = `input-particle-${Date.now()}-${i}`;
-        const x = rect.width * 0.8 + Math.random() * 40;
-        const y = rect.height / 2 + (Math.random() - 0.5) * 20;
+        const x = Math.random() * inputContainerRef.current.clientWidth;
+        const y = Math.random() * inputContainerRef.current.clientHeight;
 
         setInputParticles((prev) => [...prev, { id, x, y }]);
 
@@ -534,32 +537,6 @@ export default function ChatInterface({
           animation: shimmer 3s linear infinite;
         }
 
-        /* ▼▼▼ 削除: テキストエリアでは不要なため ▼▼▼ */
-        /*
-        @keyframes cursor-blink {
-          0%,
-          49% {
-            opacity: 1;
-          }
-          50%,
-          100% {
-            opacity: 0;
-          }
-        }
-
-        .animated-cursor::after {
-          content: "|";
-          position: absolute;
-          right: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          animation: cursor-blink 1s infinite;
-          color: #3b82f6;
-          font-weight: bold;
-        }
-        */
-
-        /* ▼▼▼ 追加: 改行を正しく表示するためのスタイル ▼▼▼ */
         .whitespace-pre-wrap {
           white-space: pre-wrap;
         }
@@ -616,21 +593,46 @@ export default function ChatInterface({
                       ease: [0.23, 1, 0.32, 1],
                     }}
                     className="chat-message relative rounded-2xl"
-                    onMouseEnter={() =>
-                      message.type === "user" && setHoveredMessageId(message.id)
-                    }
+                    // ▼▼▼ 変更点: ホバー対象を管理者モードのシステムメッセージにも広げる ▼▼▼
+                    onMouseEnter={() => {
+                      if (
+                        message.type === "user" ||
+                        (isAdminMode && message.type === "system")
+                      ) {
+                        setHoveredMessageId(message.id);
+                      }
+                    }}
                     onMouseLeave={() => setHoveredMessageId(null)}
                   >
                     {message.type === "system" ? (
+                      // ▼▼▼ 変更点: システムメッセージのレイアウトと削除ボタンを追加 ▼▼▼
                       <motion.div
-                        className="flex justify-center"
-                        whileHover={{ scale: 1.05 }}
+                        className="flex justify-center items-center gap-2"
+                        whileHover={
+                          isAdminMode ? { scale: 1.05 } : { scale: 1 }
+                        }
                         transition={{ type: "spring", stiffness: 400 }}
                       >
                         <span className="text-xs bg-gradient-to-r from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 text-slate-600 dark:text-slate-300 px-4 py-1.5 rounded-full shadow-sm backdrop-blur-sm border border-slate-200/50 dark:border-slate-600/50">
                           <Sparkles className="inline-block w-3 h-3 mr-1" />
                           {message.content}
                         </span>
+                        <AnimatePresence>
+                          {isAdminMode && hoveredMessageId === message.id && (
+                            <motion.button
+                              initial={{ opacity: 0, scale: 0.5 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.5 }}
+                              whileHover={{ scale: 1.1, rotate: -5 }}
+                              whileTap={{ scale: 0.9 }}
+                              onClick={() => handleDeleteClick(message.id)}
+                              className="p-2 rounded-xl bg-gradient-to-br from-red-500/80 to-pink-500/80 text-white backdrop-blur-xl shadow-lg border border-red-400/20"
+                              title="メッセージを削除"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </motion.button>
+                          )}
+                        </AnimatePresence>
                       </motion.div>
                     ) : (
                       <div
@@ -686,13 +688,11 @@ export default function ChatInterface({
                               )}
                               <div
                                 className={`relative z-10 break-words whitespace-pre-wrap ${
-                                  // ◀◀◀ `whitespace-pre-wrap` を追加して改行を反映
                                   message.sender !== currentUser
                                     ? "text-slate-700 dark:text-slate-200"
                                     : ""
                                 }`}
                               >
-                                {/* 改善されたリプライ引用表示 */}
                                 {message.replyContext && message.replyTo && (
                                   <motion.a
                                     initial={{ opacity: 0, y: -10 }}
@@ -982,7 +982,9 @@ export default function ChatInterface({
                                         })}
                                       </div>
                                     </motion.div>
-                                    {message.sender === currentUser && (
+                                    {/* ▼▼▼ 変更点: 削除ボタンの表示条件を変更 ▼▼▼ */}
+                                    {(message.sender === currentUser ||
+                                      isAdminMode) && (
                                       <motion.button
                                         initial={{
                                           opacity: 0,
@@ -1237,48 +1239,23 @@ export default function ChatInterface({
               animate={{ scale: 1, opacity: 1 }}
               transition={{ duration: 0.5, ease: "easeOut" }}
             >
-              {/* 波紋エフェクト */}
               <AnimatePresence>
                 {ripples.map((ripple) => (
                   <RippleEffect key={ripple.id} x={ripple.x} y={ripple.y} />
                 ))}
               </AnimatePresence>
 
-              {/* 入力パーティクル: 文字カーソル位置に表示 */}
               <AnimatePresence>
-                {inputParticles.map((particle) => {
-                  // カーソル位置取得
-                  let caretX = particle.x;
-                  let caretY = particle.y;
-                  if (inputRef.current) {
-                    const input = inputRef.current;
-                    const value = input.value;
-                    const selectionStart = input.selectionStart ?? value.length;
-                    // テキスト幅計算用のダミーspanを作成
-                    const span = document.createElement("span");
-                    span.style.visibility = "hidden";
-                    span.style.position = "absolute";
-                    span.style.whiteSpace = "pre";
-                    span.style.font = window.getComputedStyle(input).font;
-                    span.textContent = value.slice(0, selectionStart);
-                    document.body.appendChild(span);
-                    const rect = input.getBoundingClientRect();
-                    const spanRect = span.getBoundingClientRect();
-                    // inputのpadding-leftを考慮
-                    const style = window.getComputedStyle(input);
-                    const paddingLeft = parseFloat(style.paddingLeft || "0");
-                    caretX = spanRect.width + paddingLeft;
-                    caretY = rect.height / 2;
-                    document.body.removeChild(span);
-                  }
-                  return (
-                    <InputParticle key={particle.id} x={caretX} y={caretY} />
-                  );
-                })}
+                {inputParticles.map((particle) => (
+                  <InputParticle
+                    key={particle.id}
+                    x={particle.x}
+                    y={particle.y}
+                  />
+                ))}
               </AnimatePresence>
 
               <div className="relative bg-white/95 dark:bg-slate-800/95 rounded-xl overflow-hidden">
-                {/* シマーエフェクト */}
                 <div
                   className="absolute inset-0 shimmer-effect opacity-30"
                   style={{
@@ -1287,7 +1264,6 @@ export default function ChatInterface({
                   }}
                 />
 
-                {/* ▼▼▼ 変更: Input を TextareaAutosize に置き換え ▼▼▼ */}
                 <TextareaAutosize
                   ref={inputRef}
                   id="chat-input"
@@ -1296,7 +1272,11 @@ export default function ChatInterface({
                   onKeyDown={handleKeyDown}
                   onFocus={handleInputFocus}
                   onBlur={() => setIsInputFocused(false)}
-                  placeholder={placeholderTexts[placeholderIndex]}
+                  placeholder={
+                    isAdminMode
+                      ? "管理者モード..."
+                      : placeholderTexts[placeholderIndex]
+                  }
                   minRows={1}
                   maxRows={8}
                   className={`
@@ -1314,7 +1294,6 @@ export default function ChatInterface({
                   }}
                 />
 
-                {/* 文字数カウンター */}
                 <AnimatePresence>
                   {inputValue && (
                     <motion.div
@@ -1333,7 +1312,6 @@ export default function ChatInterface({
               </div>
             </motion.div>
 
-            {/* 送信ボタン */}
             <motion.div
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -1378,7 +1356,6 @@ export default function ChatInterface({
                   )}
                 </AnimatePresence>
 
-                {/* 送信ボタンの波動エフェクト */}
                 {inputValue.trim() && (
                   <>
                     <motion.div
@@ -1407,7 +1384,6 @@ export default function ChatInterface({
               </Button>
             </motion.div>
           </div>
-          {/* ▼▼▼ 追加: 改行方法のガイド ▼▼▼ */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{

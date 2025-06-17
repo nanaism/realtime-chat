@@ -23,6 +23,8 @@ export default function ChatPage() {
   const [showSpaceDive, setShowSpaceDive] = useState(true);
   const [minimumLoadTimePassed, setMinimumLoadTimePassed] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  // ▼▼▼ 変更点: 管理者モードの状態を追加 ▼▼▼
+  const [isAdminMode, setIsAdminMode] = useState(false);
 
   useEffect(() => {
     const storedUsername = localStorage.getItem("username");
@@ -48,6 +50,8 @@ export default function ChatPage() {
     sendUserMove,
     sendReaction,
     deleteMessage,
+    // ▼▼▼ 変更点: 管理者用削除関数を受け取る ▼▼▼
+    deleteMessageAsAdmin,
     clearChatHistory,
     logout,
   } = useChatSocket({ username });
@@ -56,11 +60,20 @@ export default function ChatPage() {
     return users.find((user) => user.name === username)?.id || null;
   }, [users, username]);
 
-  // ▼▼▼ 裏コマンドを定義 ▼▼▼
+  // ▼▼▼ 変更点: 裏コマンドと管理者パスワードを定義 ▼▼▼
   const PURGE_COMMAND = "/!purge_chat_history_absolutely_!/";
+  const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
 
   const handleSendMessage = () => {
     if (!inputValue.trim() || !username) return;
+
+    // ▼▼▼ 変更点: 管理者モードへの切り替え処理を追加 ▼▼▼
+    if (ADMIN_PASSWORD && inputValue === ADMIN_PASSWORD) {
+      setIsAdminMode(true);
+      setInputValue("");
+      alert("管理者モードが有効になりました。");
+      return; // メッセージは送信しない
+    }
 
     // ▼▼▼ 裏コマンドの処理を追加 ▼▼▼
     if (inputValue === PURGE_COMMAND) {
@@ -88,6 +101,17 @@ export default function ChatPage() {
     sendTypingUpdate(isTyping);
   };
 
+  // ▼▼▼ 変更点: 新しい削除ハンドラを追加 ▼▼▼
+  const handleDelete = (messageId: string) => {
+    if (isAdminMode) {
+      // 管理者モードなら、管理者用削除関数を呼び出す
+      deleteMessageAsAdmin(messageId);
+    } else {
+      // 通常モードなら、既存の削除関数を呼び出す（サーバー側で本人か検証される）
+      deleteMessage(messageId);
+    }
+  };
+
   const handleUserMove = (
     _userId: string,
     newPosition: { x: number; y: number }
@@ -102,6 +126,8 @@ export default function ChatPage() {
     setInputValue("");
     setShowUserPanel(false);
     setActiveTab("chat");
+    // ▼▼▼ 変更点: 退出時に管理者モードを解除 ▼▼▼
+    setIsAdminMode(false);
     router.push("/");
   };
 
@@ -180,7 +206,9 @@ export default function ChatPage() {
                     setInputValue={handleInputChange}
                     onSendMessage={handleSendMessage}
                     onSendReaction={sendReaction}
-                    onDeleteMessage={deleteMessage} // ◀◀◀ 追加
+                    // ▼▼▼ 変更点: isAdminMode と新しい削除ハンドラを渡す ▼▼▼
+                    isAdminMode={isAdminMode}
+                    onDeleteMessage={handleDelete}
                     replyingTo={replyingTo}
                     setReplyingTo={setReplyingTo}
                   />
@@ -200,7 +228,9 @@ export default function ChatPage() {
                 setInputValue={handleInputChange}
                 onSendMessage={handleSendMessage}
                 onSendReaction={sendReaction}
-                onDeleteMessage={deleteMessage} // ◀◀◀ 追加
+                // ▼▼▼ 変更点: isAdminMode と新しい削除ハンドラを渡す ▼▼▼
+                isAdminMode={isAdminMode}
+                onDeleteMessage={handleDelete}
                 replyingTo={replyingTo}
                 setReplyingTo={setReplyingTo}
               />

@@ -201,6 +201,12 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     socketRef.current?.emit("message:delete", { messageId });
   }, []);
 
+  // ▼▼▼ 変更点: 管理者用の削除関数を追加 ▼▼▼
+  const deleteMessageAsAdmin = useCallback((messageId: string) => {
+    socketRef.current?.emit("admin:message:delete", { messageId });
+  }, []);
+  // ▲▲▲ 変更点 ▲▲▲
+
   const clearChatHistory = useCallback(() => {
     socketRef.current?.emit("chat:clear_history");
   }, []);
@@ -222,6 +228,7 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     sendUserMove,
     sendReaction, // ◀◀◀ 追加
     deleteMessage,
+    deleteMessageAsAdmin, // ◀◀◀ 追加
     clearChatHistory,
     logout,
   };
