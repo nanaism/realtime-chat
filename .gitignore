@@ -40,3 +40,6 @@ config.json
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Firebase service account key
+serviceAccountKey.json

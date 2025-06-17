@@ -1,13 +1,49 @@
 /**
- * Next.jsカスタムサーバー兼Socket.IOサーバー
+ * Next.jsカスタムサーバー 兼 Socket.IOサーバー (Firestore連携版)
  *
  * このモジュールは、Next.jsアプリケーションを提供し、Socket.IOを統合して
- * リアルタイム通信機能（チャット、ユーザー状態同期など）を実現します。
- * チャット履歴機能とリアクション機能も備えています。
+ * リアルタイム通信機能を実現します。チャット履歴の永続化には
+ * Google Cloud Firestoreを使用しています。
  */
+import admin from "firebase-admin";
 import next from "next";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
+
+// --- Firebase Admin SDKの初期化 ---
+try {
+  // GAEなどの本番環境では、環境変数から自動で認証情報を取得
+  if (process.env.NODE_ENV === "production") {
+    admin.initializeApp({
+      credential: admin.credential.applicationDefault(),
+    });
+    console.log("Firebase Admin SDK initialized for PRODUCTION.");
+  } else {
+    // ローカル開発環境では、サービスアカウントキーファイルを直接読み込む
+    const serviceAccountPath = new URL(
+      "./serviceAccountKey.json",
+      import.meta.url
+    );
+    const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, "utf8"));
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    console.log("Firebase Admin SDK initialized for DEVELOPMENT.");
+  }
+} catch (error) {
+  console.error("Firebase Admin SDK initialization failed:", error.message);
+  if (error.code === "ENOENT") {
+    console.error(
+      "-> Ensure 'serviceAccountKey.json' is in the project root directory for local development."
+    );
+  }
+  process.exit(1); // 初期化失敗時はサーバーを起動しない
+}
+
+// Firestoreのインスタンスを取得し、使用するコレクションを定義
+const db = admin.firestore();
+const messagesCollection = db.collection("messages");
 
 const dev = process.env.NODE_ENV !== "production";
 const port = process.env.PORT || 3000;
@@ -15,285 +51,290 @@ const port = process.env.PORT || 3000;
 const app = next({ dev });
 const handle = app.getRequestHandler();
 
-// 接続中のユーザー情報を保持するMapオブジェクト
+// 接続中のユーザー情報はサーバーメモリで管理（DBアクセスを減らすため）
 const users = new Map();
 
-// チャット履歴を保持する配列
-const messageHistory = [];
-// メモリを圧迫しないよう、保持する履歴の最大数を設定 (例: 100件)
-const MAX_HISTORY = 10000;
+// ログイン時に取得する履歴の件数を定義
+const HISTORY_LIMIT = 100;
 
 app.prepare().then(() => {
   const server = createServer((req, res) => {
     handle(req, res);
   });
 
-  // Socket.IOサーバーの初期化部分を修正
   const io = new Server(server, {
-    // ▼▼▼ タイムアウト設定を追加 ▼▼▼
-    // 目的: ネットワークの揺らぎやブラウザのバックグラウンド動作による
-    // 意図しない切断を防ぎ、接続をより安定させるため。
-    pingInterval: 25000, // 25秒ごとに生存確認のpingを送信 (デフォルト値のままですが、明記しておくと分かりやすいです)
-    pingTimeout: 60000, // ping送信後、クライアントからのpong応答を60秒待ちます（デフォルトは20秒）。
-    // この時間を伸ばすことで、一時的な無応答で切断されにくくなります。
-    // ▲▲▲ ここまで追加 ▲▲▲
+    // ネットワークが不安定な場合でも接続を維持しやすくするための設定
+    pingInterval: 25000,
+    pingTimeout: 60000,
   });
 
   io.engine.on("connection_error", (err) => {
     console.log("Connection error:", err);
   });
 
+  // 新規クライアント接続時の処理
   io.on("connection", (socket) => {
-    console.log(`接続確立: ${socket.id}`);
+    console.log(`Socket connected: ${socket.id}`);
 
+    /**
+     * ユーザー名が使用済みかチェックする
+     */
     socket.on("user:check_name", (username, callback) => {
-      const existingUser = Array.from(users.values()).find(
+      const isTaken = Array.from(users.values()).some(
         (u) => u.name === username
       );
-      if (existingUser) {
+      if (isTaken) {
         callback({
           available: false,
           message: "この表示名は既に使用されています。",
         });
       } else {
-        callback({
-          available: true,
-        });
+        callback({ available: true });
       }
     });
 
-    // ▼▼▼ user:login のロジックを修正 ▼▼▼
-    socket.on("user:login", (userData) => {
-      console.log("ログインデータ受信:", userData);
-
-      const existingUser = Array.from(users.values()).find(
+    /**
+     * ユーザーログイン処理
+     */
+    socket.on("user:login", async (userData) => {
+      // 既に同じ名前のユーザーがログインしている場合はエラーを返す
+      const isTaken = Array.from(users.values()).some(
         (u) => u.name === userData.name
       );
-
-      // ★★★ 重複ユーザーの処理を変更 ★★★
-      if (existingUser) {
-        console.log(
-          `ユーザー "${userData.name}" は既に接続済みです。新しい接続 (${socket.id}) を拒否します。`
-        );
-        // 新しい接続元（このソケット）にのみエラーイベントを送信
+      if (isTaken) {
         socket.emit("user:login_error", {
           message:
             "この表示名は他のタブまたはウィンドウで既に使用されています。",
         });
-        // この後の処理は行わず、ユーザーをリストに追加しない
         return;
       }
 
-      // --- ここから下は、重複がない場合の正常な処理 ---
+      // ユーザー情報をメモリに保存
+      const currentUser = { ...userData, id: socket.id };
+      users.set(socket.id, currentUser);
 
-      const updatedUserData = {
-        ...userData,
-        id: socket.id,
-      };
-      users.set(socket.id, updatedUserData);
+      // Firestoreから最新のチャット履歴を取得して送信
+      try {
+        const snapshot = await messagesCollection
+          .orderBy("timestamp", "desc")
+          .limit(HISTORY_LIMIT)
+          .get();
 
-      console.log(
-        `履歴を送信: ${socket.id} へ ${messageHistory.length} 件のメッセージ`
-      );
-      // ログインが成功した本人に、成功したことと履歴を送信
-      socket.emit("user:login_success", updatedUserData);
-      socket.emit("chat:history", messageHistory);
+        // 取得したドキュメントを配列に変換し、時系列（古い→新しい）に並び替える
+        const history = snapshot.docs
+          .map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }))
+          .reverse();
 
-      // 入室メッセージを作成
+        socket.emit("user:login_success", currentUser);
+        socket.emit("chat:history", history);
+        console.log(`Sent ${history.length} messages to ${currentUser.name}`);
+      } catch (error) {
+        console.error("Error fetching chat history:", error);
+        // エラー時もログインは成功させ、空の履歴を送信
+        socket.emit("user:login_success", currentUser);
+        socket.emit("chat:history", []);
+      }
+
+      // 入室システムメッセージを作成し、Firestoreに保存
       const systemMessage = {
-        id: `msg-${Date.now()}`,
         type: "system",
         sender: "System",
-        content: `${updatedUserData.name} が入室しました`,
+        content: `${currentUser.name} が入室しました`,
         timestamp: new Date().toISOString(),
         reactions: {},
       };
-
-      messageHistory.push(systemMessage);
-      if (messageHistory.length > MAX_HISTORY) {
-        messageHistory.shift();
+      try {
+        const docRef = await messagesCollection.add(systemMessage);
+        const savedMessage = { id: docRef.id, ...systemMessage };
+        io.emit("message:new", savedMessage); // 全クライアントにブロードキャスト
+      } catch (error) {
+        console.error("Error saving join message:", error);
       }
-      // 全員に入室メッセージを送信
-      io.emit("message:new", systemMessage);
 
-      // 全員にユーザーリストの更新を通知
-      const usersList = Array.from(users.values());
-      io.emit("users:update", usersList);
-
-      console.log(`ログイン成功: ${updatedUserData.name} (${socket.id})`);
+      // 全クライアントに最新のユーザーリストを送信
+      io.emit("users:update", Array.from(users.values()));
+      console.log(`User logged in: ${currentUser.name} (${socket.id})`);
     });
 
-    socket.on("message:send", (message) => {
-      const messageWithId = {
-        ...message,
-        id: `msg-${Date.now()}`,
-        reactions: {},
-      };
+    /**
+     * 新規メッセージの受信と保存、ブロードキャスト
+     */
+    socket.on("message:send", async (message) => {
+      const user = users.get(socket.id);
+      if (!user) return; // 未ログインユーザーからのメッセージは無視
 
-      // ▼▼▼ リプライ処理を追加 ▼▼▼
-      // クライアントから replyTo (リプライ先のID) が送られてきた場合
+      const messageData = { ...message, reactions: {} };
+
+      // リプライ先の情報があれば、元メッセージを取得してコンテキストを追加
       if (message.replyTo) {
-        // 履歴からリプライ元のメッセージを検索
-        const repliedToMessage = messageHistory.find(
-          (m) => m.id === message.replyTo
-        );
-
-        // 見つかった場合、そのコンテキスト（送信者と内容）を新しいメッセージに含める
-        if (repliedToMessage && repliedToMessage.type === "user") {
-          messageWithId.replyContext = {
-            sender: repliedToMessage.sender,
-            content: repliedToMessage.content,
-          };
+        try {
+          const repliedDoc = await messagesCollection
+            .doc(message.replyTo)
+            .get();
+          if (repliedDoc.exists()) {
+            const repliedMessage = repliedDoc.data();
+            messageData.replyContext = {
+              sender: repliedMessage.sender,
+              content: repliedMessage.content,
+            };
+          }
+        } catch (error) {
+          console.error("Error fetching reply context:", error);
         }
       }
-      // ▲▲▲ リプライ処理を追加 ▲▲▲
 
-      messageHistory.push(messageWithId);
-      if (messageHistory.length > MAX_HISTORY) {
-        messageHistory.shift();
+      // メッセージをFirestoreに保存
+      try {
+        const docRef = await messagesCollection.add(messageData);
+        const savedMessage = { id: docRef.id, ...messageData };
+        io.emit("message:new", savedMessage); // 全クライアントにブロードキャスト
+        console.log(`Message from ${user.name}: ${message.content}`);
+      } catch (error) {
+        console.error("Error saving message:", error);
       }
-      io.emit("message:new", messageWithId);
-
-      console.log(`メッセージ: ${message.content} from ${message.sender}`);
     });
 
-    // ▼▼▼ ここからリアクション処理のロジックを丸ごと追加 ▼▼▼
-    socket.on("reaction:add", ({ messageId, emoji }) => {
+    /**
+     * リアクションの追加・削除（トグル）
+     */
+    socket.on("reaction:add", async ({ messageId, emoji }) => {
       const user = users.get(socket.id);
       if (!user) return;
 
-      const message = messageHistory.find((m) => m.id === messageId);
-      if (!message) return;
+      const messageRef = messagesCollection.doc(messageId);
 
-      // reactions オブジェクトがなければ初期化
-      if (!message.reactions) {
-        message.reactions = {};
-      }
-      // 絵文字キーがなければ初期化
-      if (!message.reactions[emoji]) {
-        message.reactions[emoji] = [];
-      }
+      try {
+        // データの競合を防ぐためトランザクション内で更新
+        await db.runTransaction(async (transaction) => {
+          const messageDoc = await transaction.get(messageRef);
+          if (!messageDoc.exists) throw new Error("Message not found");
 
-      const userIndex = message.reactions[emoji].indexOf(user.name);
+          const data = messageDoc.data();
+          const reactions = data.reactions || {};
+          reactions[emoji] = reactions[emoji] || [];
 
-      if (userIndex > -1) {
-        // ユーザーが既にリアクションしていれば、削除（トグル）
-        message.reactions[emoji].splice(userIndex, 1);
-        // リアクションしたユーザーがいなくなったら、絵文字キー自体を削除
-        if (message.reactions[emoji].length === 0) {
-          delete message.reactions[emoji];
-        }
-      } else {
-        // ユーザーがまだリアクションしていなければ、追加
-        message.reactions[emoji].push(user.name);
-      }
+          const userIndex = reactions[emoji].indexOf(user.name);
+          if (userIndex > -1) {
+            reactions[emoji].splice(userIndex, 1); // 既にあれば削除
+            if (reactions[emoji].length === 0) delete reactions[emoji];
+          } else {
+            reactions[emoji].push(user.name); // なければ追加
+          }
 
-      console.log(
-        `Reaction update: ${user.name} reacted with ${emoji} to message ${messageId}`
-      );
+          transaction.update(messageRef, { reactions });
+        });
 
-      // 全クライアントに更新情報をブロードキャスト
-      io.emit("reaction:update", {
-        messageId: messageId,
-        reactions: message.reactions,
-      });
-    });
-    // ▲▲▲ ここまで追加 ▲▲▲
-
-    /**
-     * 個別メッセージ削除リクエストの処理
-     */
-    socket.on("message:delete", ({ messageId }) => {
-      const user = users.get(socket.id);
-      if (!user) return; // ユーザー情報がない場合は何もしない
-
-      const messageIndex = messageHistory.findIndex((m) => m.id === messageId);
-      if (messageIndex === -1) return; // メッセージが見つからない
-
-      const messageToDelete = messageHistory[messageIndex];
-
-      // メッセージの投稿者本人か、またはシステムメッセージでないことを確認
-      if (
-        messageToDelete.type === "user" &&
-        messageToDelete.sender === user.name
-      ) {
-        // messageHistory からメッセージを削除
-        messageHistory.splice(messageIndex, 1);
-
-        // 全クライアントに削除を通知
-        io.emit("message:deleted", { messageId });
-        console.log(`メッセージ削除: ${messageId} by ${user.name}`);
-      } else {
-        // 権限がない場合（ログ出力のみ）
-        console.log(
-          `不正な削除リクエスト: ${user.name} が ${messageToDelete.sender} のメッセージ(${messageId})を削除しようとしました`
-        );
+        // 更新後のリアクション情報を全クライアントに通知
+        const updatedDoc = await messageRef.get();
+        io.emit("reaction:update", {
+          messageId,
+          reactions: updatedDoc.data().reactions || {},
+        });
+      } catch (error) {
+        console.error("Error updating reaction:", error);
       }
     });
 
-    // ▼▼▼ 変更点: 管理者用のメッセージ削除イベントハンドラを追加 ▼▼▼
     /**
-     * 管理者によるメッセージ削除リクエストの処理
+     * 投稿者本人によるメッセージ削除
      */
-    socket.on("admin:message:delete", ({ messageId }) => {
-      const user = users.get(socket.id);
-      if (!user) return; // ユーザー情報がない場合は何もしない
-
-      // 管理者モードの削除では、誰がリクエストしたかのチェックは行わない
-      const messageIndex = messageHistory.findIndex((m) => m.id === messageId);
-      if (messageIndex !== -1) {
-        // messageHistory からメッセージを削除
-        messageHistory.splice(messageIndex, 1);
-
-        // 全クライアントに削除を通知
-        io.emit("message:deleted", { messageId });
-        console.log(`管理者によるメッセージ削除: ${messageId} by ${user.name}`);
-      } else {
-        console.log(
-          `管理者による削除リクエスト失敗: メッセージが見つかりません (${messageId}) by ${user.name}`
-        );
-      }
-    });
-    // ▲▲▲ 変更点 ▲▲▲
-
-    /**
-     * 全履歴削除リクエストの処理（裏コマンド用）
-     */
-    socket.on("chat:clear_history", () => {
+    socket.on("message:delete", async ({ messageId }) => {
       const user = users.get(socket.id);
       if (!user) return;
 
-      // 履歴を空にする
-      messageHistory.length = 0;
+      const messageRef = messagesCollection.doc(messageId);
+      try {
+        const doc = await messageRef.get();
+        if (!doc.exists) return;
 
-      // 全削除を通知するシステムメッセージを作成
-      const systemMessage = {
-        id: `msg-${Date.now()}`,
-        type: "system",
-        sender: "System",
-        content: `${user.name} がチャット履歴を全削除しました。`,
-        timestamp: new Date().toISOString(),
-        reactions: {},
-      };
-
-      // 新しいシステムメッセージを履歴に追加
-      messageHistory.push(systemMessage);
-
-      // 全クライアントに履歴がクリアされたことを、新しいシステムメッセージと共に通知
-      io.emit("chat:history_cleared", systemMessage);
-      console.log(`チャット履歴が ${user.name} によって全削除されました。`);
+        // 本人確認
+        const message = doc.data();
+        if (message.sender === user.name) {
+          await messageRef.delete();
+          io.emit("message:deleted", { messageId });
+          console.log(`Message ${messageId} deleted by ${user.name}`);
+        } else {
+          console.log(
+            `Unauthorized delete attempt by ${user.name} on message ${messageId}`
+          );
+        }
+      } catch (error) {
+        console.error("Error deleting message:", error);
+      }
     });
 
+    /**
+     * 管理者権限によるメッセージ削除
+     */
+    socket.on("admin:message:delete", async ({ messageId }) => {
+      const user = users.get(socket.id);
+      if (!user) return;
+      // TODO: ここで管理者かどうかを判定するロジックを追加（例: if (user.name !== 'admin') return;）
+
+      try {
+        await messagesCollection.doc(messageId).delete();
+        io.emit("message:deleted", { messageId });
+        console.log(`Message ${messageId} deleted by admin ${user.name}`);
+      } catch (error) {
+        console.error("Error deleting message as admin:", error);
+      }
+    });
+
+    /**
+     * チャット履歴の全削除（高コストなため注意）
+     */
+    socket.on("chat:clear_history", async () => {
+      const user = users.get(socket.id);
+      if (!user) return;
+      // TODO: 管理者のみ実行可能にするべき
+
+      console.log(`History clear requested by ${user.name}. Processing...`);
+      try {
+        // Firestoreの全ドキュメントを効率的に削除するのは複雑なため、
+        // ここではバッチ処理で削除。大規模コレクションには非推奨。
+        const snapshot = await messagesCollection.limit(500).get(); // 一度に削除する上限
+        if (snapshot.empty) {
+          console.log("No messages to delete.");
+          return;
+        }
+        const batch = db.batch();
+        snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
+
+        // 削除通知メッセージを保存・送信
+        const systemMessage = {
+          type: "system",
+          sender: "System",
+          content: `${user.name} がチャット履歴を全削除しました。`,
+          timestamp: new Date().toISOString(),
+          reactions: {},
+        };
+        const docRef = await messagesCollection.add(systemMessage);
+        io.emit("chat:history_cleared", { id: docRef.id, ...systemMessage });
+        console.log("Chat history cleared.");
+      } catch (error) {
+        console.error("Error clearing history:", error);
+      }
+    });
+
+    /**
+     * ユーザーのアバター移動情報のブロードキャスト
+     */
     socket.on("user:move", (position) => {
       const userData = users.get(socket.id);
       if (userData) {
         userData.position = position;
         users.set(socket.id, userData);
-        const usersList = Array.from(users.values());
-        io.emit("users:update", usersList);
+        io.emit("users:update", Array.from(users.values()));
       }
     });
 
+    /**
+     * タイピング中ステータスのブロードキャスト
+     */
     socket.on("user:typing", (isTyping) => {
       const userData = users.get(socket.id);
       if (userData) {
@@ -305,45 +346,39 @@ app.prepare().then(() => {
       }
     });
 
-    socket.on("disconnect", () => {
+    /**
+     * クライアント切断時の処理
+     */
+    socket.on("disconnect", async () => {
       const userData = users.get(socket.id);
       if (userData) {
         users.delete(socket.id);
 
-        // 退室メッセージを作成
+        // 退室システムメッセージをFirestoreに保存
         const systemMessage = {
-          id: `msg-${Date.now()}`,
           type: "system",
           sender: "System",
           content: `${userData.name} が退室しました`,
           timestamp: new Date().toISOString(),
           reactions: {},
         };
-
-        messageHistory.push(systemMessage);
-        if (messageHistory.length > MAX_HISTORY) {
-          messageHistory.shift();
+        try {
+          const docRef = await messagesCollection.add(systemMessage);
+          io.emit("message:new", { id: docRef.id, ...systemMessage });
+        } catch (error) {
+          console.error("Error saving leave message:", error);
         }
-        // ★★★ 変更: 全員に退室メッセージを送信 ★★★
-        // (以前の実装だと自分自身に送れないが、disconnectなのでこれでOK)
-        io.emit("message:new", systemMessage);
 
-        const usersList = Array.from(users.values());
-        io.emit("users:update", usersList);
-        console.log(`切断: ${userData.name} (${socket.id})`);
+        // 最新のユーザーリストを全クライアントに送信
+        io.emit("users:update", Array.from(users.values()));
+        console.log(`User disconnected: ${userData.name} (${socket.id})`);
       } else {
-        // login前に切断された場合など
-        console.log(`切断 (ユーザー情報なし): ${socket.id}`);
+        console.log(`Socket disconnected (no user data): ${socket.id}`);
       }
     });
   });
 
-  server
-    .once("error", (err) => {
-      console.error("HTTPサーバー起動エラー:", err);
-      process.exit(1);
-    })
-    .listen(port, () => {
-      console.log(`> Ready on http://localhost:${port}`);
-    });
+  server.listen(port, () => {
+    console.log(`> Server ready on http://localhost:${port}`);
+  });
 });
