@@ -29,7 +29,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import type React from "react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { io, Socket } from "socket.io-client";
+import { io } from "socket.io-client";
 
 // Advanced Lottie Animation - Floating Orbs (変更なし)
 const floatingOrbAnimation = {
@@ -709,8 +709,9 @@ export default function WelcomeScreen() {
     setError(null);
     setIsLoading(true);
 
-    const socket: Socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "");
-
+    const socket = io("https://nextjs-chat-server-7cvwxactia-as.a.run.app", {
+      transports: ["websocket"],
+    });
     socket.on("connect", () => {
       console.log("名前チェック用のソケット接続完了:", socket.id);
       socket.emit(
