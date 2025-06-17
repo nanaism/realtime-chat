@@ -30,54 +30,74 @@ export interface TypingStatus {
   isTyping: boolean;
 }
 
-// Socket.IOのイベント型定義
+// =============================================================
+// ▼▼▼ ここからが emit方式に合わせた正しい型定義 ▼▼▼
+// =============================================================
+
+// サーバーからクライアントへ送られるイベント
 export interface ServerToClientEvents {
+  /** ログインが成功したことをクライアントに通知します */
+  "user:login_success": (currentUser: User) => void;
+
+  /** チャット履歴を送信します */
   "chat:history": (history: Message[]) => void;
+
+  /** 新しいメッセージを通知します */
   "message:new": (message: Message) => void;
+
+  /** ユーザーリストの更新を通知します */
   "users:update": (users: User[]) => void;
-  "user:typing": (data: {
-    userId: string;
-    name: string;
-    isTyping: boolean;
-  }) => void;
+
+  /** タイピング状態を通知します */
+  "user:typing": (data: TypingStatus) => void;
+
+  /** リアクションの更新を通知します */
   "reaction:update": (data: {
     messageId: string;
     reactions: Message["reactions"];
   }) => void;
+
+  /** メッセージの削除を通知します */
   "message:deleted": (data: { messageId: string }) => void;
+
+  /** 履歴の全削除を通知します */
   "chat:history_cleared": (systemMessage: Message) => void;
 
-  // --- ▼▼▼ ここからが変更箇所 ▼▼▼ ---
-  /** ログインが成功したことをクライアントに通知します */
-  "user:login_success": (currentUser: User) => void;
-
-  /** ログインが失敗（例: ユーザー名重複）したことをクライアントに通知します */
+  /** ログインエラーを通知します（名前重複など） */
   "user:login_error": (error: { message: string }) => void;
-  // --- ▲▲▲ ここまでが変更箇所 ▲▲▲ ---
 }
 
+// クライアントからサーバーへ送られるイベント
 export interface ClientToServerEvents {
-  // --- ▼▼▼ ここからが変更箇所 ▼▼▼ ---
-  /**
-   * ユーザーがログインを試みます。
-   * クライアントはIDを含まないユーザー情報を送信します。
-   */
+  /** ユーザーがログインを試みます */
   "user:login": (userData: Omit<User, "id">) => void;
-  // --- ▲▲▲ ここまでが変更箇所 ▲▲▲ ---
 
-  // ▼▼▼ 変更: message:sendでreplyToを送れるようにする ▼▼▼
-  // replyContextはサーバー側で付与するため、クライアントからは送信しない
+  /** メッセージを送信します */
   "message:send": (
     message: Omit<Message, "id" | "reactions" | "replyContext">
   ) => void;
-  // ▲▲▲ 変更 ▲▲▲
+
+  /** ユーザーの移動を通知します */
   "user:move": (position: { x: number; y: number }) => void;
+
+  /** タイピング状態を通知します */
   "user:typing": (isTyping: boolean) => void;
+
+  /** リアクションを追加/削除します */
   "reaction:add": (data: { messageId: string; emoji: string }) => void;
+
+  /** メッセージを削除します */
   "message:delete": (data: { messageId: string }) => void;
+
+  /** 履歴を全削除します */
   "chat:clear_history": () => void;
 
-  // ▼▼▼ 変更点: 管理者用のメッセージ削除イベントを追加 ▼▼▼
+  /** 管理者権限でメッセージを削除します */
   "admin:message:delete": (data: { messageId: string }) => void;
-  // ▲▲▲ 変更点 ▲▲▲
+
+  /** ユーザー名の重複チェックを依頼します (これは元のコードにあったので残します) */
+  "user:check_name": (
+    username: string,
+    callback: (response: { available: boolean; message?: string }) => void
+  ) => void;
 }

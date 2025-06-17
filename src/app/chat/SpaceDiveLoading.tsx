@@ -27,7 +27,7 @@ interface LightStreak {
 }
 
 // 宇宙ダイブローディングコンポーネント
-const SpaceDiveLoading = ({ onComplete }: { onComplete: () => void }) => {
+const SpaceDiveLoading = () => {
   const [phase, setPhase] = useState<"initial" | "diving" | "entering">(
     "initial"
   );
@@ -81,14 +81,14 @@ const SpaceDiveLoading = ({ onComplete }: { onComplete: () => void }) => {
   useEffect(() => {
     const timer1 = setTimeout(() => setPhase("diving"), 500);
     const timer2 = setTimeout(() => setPhase("entering"), 2000);
-    const timer3 = setTimeout(() => onComplete(), 3000);
+    // const timer3 = setTimeout(() => onComplete(), 3000);
 
     return () => {
       clearTimeout(timer1);
       clearTimeout(timer2);
-      clearTimeout(timer3);
+      // clearTimeout(timer3);
     };
-  }, [onComplete]);
+  }, []);
 
   return (
     <AnimatePresence>

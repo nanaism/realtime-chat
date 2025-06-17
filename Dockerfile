@@ -1,38 +1,42 @@
-# Dockerfile (修正後)
+# Dockerfile
 
-# --- 1. ビルドステージ ---
+# --- Stage 1: Build a production-ready Next.js app ---
+# Use the official Node.js 18 image as a base
 FROM node:18-alpine AS builder
+
+# Set the working directory
 WORKDIR /app
+
+# Copy package.json and lock files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy the rest of the application source code
 COPY . .
-RUN npm install --frozen-lockfile
+
+# Build the Next.js application
+# This will create the .next directory
 RUN npm run build
 
-# --- 2. 本番ステージ ---
-FROM node:18-alpine AS runner
+# --- Stage 2: Create a minimal production image ---
+FROM node:18-alpine
+
 WORKDIR /app
 
-ENV NODE_ENV=production
-
-# ビルドステージから必要なファイルをコピー
+# Copy only necessary files from the builder stage
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/package.json ./package.json
-
-# package-lock.jsonもコピーすると、より安定したインストールになります
-COPY --from=builder /app/package-lock.json ./package-lock.json
-
-# standaloneモードで生成されたファイルをコピー
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-
-# カスタムサーバーファイルをコピー (例: server.js)
 COPY --from=builder /app/server.js ./server.js
+# Copy the service account key
+COPY --from=builder /app/serviceAccountKey.json ./serviceAccountKey.json
 
-# ★★★ ここにコマンドを追加 ★★★
-# 本番環境で必要なパッケージ (socket.io など) をインストールします
-RUN npm install --omit=dev
 
-# App EngineがPORT環境変数を設定します (通常は8080)
-EXPOSE 8080
+# Expose the port the app runs on
+EXPOSE 3000
 
-# アプリケーションを起動するコマンド
-CMD ["node", "server.js"]
+# Set the command to start the server in production mode
+CMD ["npm", "start"]
