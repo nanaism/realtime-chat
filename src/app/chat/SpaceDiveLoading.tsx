@@ -1,326 +1,349 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-// ▼▼▼ 各要素の型定義を追加（可読性向上のため） ▼▼▼
-interface Star {
-  id: number;
-  x: number;
-  y: number;
-  z: number;
-  size: number;
-  brightness: number;
-}
-interface NebulaCloud {
-  id: number;
-  x: number;
-  y: number;
-  scale: number;
-  opacity: number;
-  color: "purple" | "blue" | "pink";
-}
-interface LightStreak {
+interface RadialWave {
   id: number;
   angle: number;
-  distance: number;
+  speed: number;
+  width: number;
+  color: string;
+}
+
+interface SpeedLine {
+  id: number;
+  x: number;
+  y: number;
   length: number;
+  angle: number;
   delay: number;
 }
 
-// 宇宙ダイブローディングコンポーネント
-const SpaceDiveLoading = () => {
-  const [phase, setPhase] = useState<"initial" | "diving" | "entering">(
-    "initial"
-  );
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // ▼▼▼ ここからが修正箇所 ▼▼▼
-  // Stateの初期値を空配列にし、クライアントサイドで生成
-  const [stars, setStars] = useState<Star[]>([]);
-  const [nebulaClouds, setNebulaClouds] = useState<NebulaCloud[]>([]);
-  const [lightStreaks, setLightStreaks] = useState<LightStreak[]>([]);
+const QuantumDiveLoading = () => {
+  const [radialWaves, setRadialWaves] = useState<RadialWave[]>([]);
+  const [speedLines, setSpeedLines] = useState<SpeedLine[]>([]);
+  const [phase, setPhase] = useState<"dive" | "sustained">("dive");
 
   useEffect(() => {
-    // このuseEffectはクライアントサイドでのみ実行される
-    // スターフィールドの生成
-    setStars(
-      Array.from({ length: 200 }, (_, i) => ({
+    // 放射状の波
+    setRadialWaves(
+      Array.from({ length: 36 }, (_, i) => ({
+        id: i,
+        angle: i * 10,
+        speed: 0.4 + Math.random() * 0.3,
+        width: 3 + Math.random() * 3,
+        color: i % 3 === 0 ? "#8b5cf6" : i % 3 === 1 ? "#3b82f6" : "#06b6d4",
+      }))
+    );
+
+    // スピード線（ダイブ感）
+    setSpeedLines(
+      Array.from({ length: 40 }, (_, i) => ({
         id: i,
         x: Math.random() * 100,
         y: Math.random() * 100,
-        z: Math.random() * 100,
-        size: Math.random() * 2 + 0.5,
-        brightness: Math.random() * 0.8 + 0.2,
+        length: 50 + Math.random() * 150,
+        angle:
+          (Math.atan2(50 - Math.random() * 100, 50 - Math.random() * 100) *
+            180) /
+          Math.PI,
+        delay: Math.random() * 0.2,
       }))
     );
-    // ネビュラ雲の生成
-    setNebulaClouds(
-      Array.from({ length: 5 }, (_, i) => ({
-        id: i,
-        x: Math.random() * 100,
-        y: Math.random() * 100,
-        scale: Math.random() * 2 + 1,
-        opacity: Math.random() * 0.3 + 0.1,
-        color: (["purple", "blue", "pink"] as const)[
-          Math.floor(Math.random() * 3)
-        ],
-      }))
-    );
-    // 光の筋の生成
-    setLightStreaks(
-      Array.from({ length: 50 }, (_, i) => ({
-        id: i,
-        angle: Math.random() * 360,
-        distance: Math.random() * 50 + 50,
-        length: Math.random() * 100 + 50,
-        delay: Math.random() * 0.5,
-      }))
-    );
-  }, []); // 空の依存配列で初回マウント時に一度だけ実行
-  // ▲▲▲ ここまでが修正箇所 ▲▲▲
 
-  useEffect(() => {
-    const timer1 = setTimeout(() => setPhase("diving"), 500);
-    const timer2 = setTimeout(() => setPhase("entering"), 2000);
-    // const timer3 = setTimeout(() => onComplete(), 3000);
-
-    return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      // clearTimeout(timer3);
-    };
+    // 0.7秒後に継続フェーズへ
+    const timer = setTimeout(() => setPhase("sustained"), 700);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
     <AnimatePresence>
       <motion.div
-        ref={containerRef}
         className="fixed inset-0 bg-black overflow-hidden z-50"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.5 }}
+        transition={{ duration: 0.05 }}
       >
-        {/* 深宇宙背景グラデーション */}
-        <div className="absolute inset-0">
-          <motion.div
-            className="absolute inset-0 bg-gradient-radial from-indigo-950/20 via-black to-black"
-            animate={{
-              scale: phase === "entering" ? 20 : 1,
-              opacity: phase === "entering" ? 0 : 1,
-            }}
-            transition={{ duration: 1.5, ease: "easeInOut" }}
-          />
-        </div>
+        {/* ダイナミック背景 */}
+        <motion.div
+          className="absolute inset-0"
+          animate={{
+            scale: phase === "dive" ? [1, 1.5] : 1,
+          }}
+          transition={{ duration: 0.7, ease: "easeOut" }}
+        >
+          <div className="absolute inset-0 bg-gradient-radial from-purple-950/50 via-blue-950/30 to-black" />
+        </motion.div>
 
-        {/* ネビュラ雲 */}
-        {nebulaClouds.map((cloud) => (
-          <motion.div
-            key={cloud.id}
-            className={`absolute rounded-full filter blur-3xl mix-blend-screen`}
-            style={{
-              left: `${cloud.x}%`,
-              top: `${cloud.y}%`,
-              width: `${cloud.scale * 300}px`,
-              height: `${cloud.scale * 300}px`,
-              background: `radial-gradient(circle, ${
-                cloud.color === "purple"
-                  ? "rgba(147, 51, 234, 0.3)"
-                  : cloud.color === "blue"
-                  ? "rgba(59, 130, 246, 0.3)"
-                  : "rgba(236, 72, 153, 0.3)"
-              } 0%, transparent 70%)`,
-            }}
-            animate={{
-              x: phase === "diving" ? "-200%" : 0,
-              scale: phase === "entering" ? 5 : 1,
-              opacity: phase === "entering" ? 0 : cloud.opacity,
-            }}
-            transition={{
-              duration: phase === "diving" ? 2 : 1,
-              ease: "easeInOut",
-            }}
-          />
-        ))}
-
-        {/* スターフィールド */}
-        <div className="absolute inset-0">
-          {stars.map((star) => (
+        {/* 中央から外への爆発的な波 */}
+        <motion.div
+          className="absolute inset-[-50%] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+          initial={{ scale: 0 }}
+          animate={{
+            scale: phase === "dive" ? [0, 2] : 1.5,
+          }}
+          transition={{
+            duration: 0.7,
+            ease: [0.25, 0.46, 0.45, 0.94],
+          }}
+        >
+          {radialWaves.map((wave) => (
             <motion.div
-              key={star.id}
-              className="absolute rounded-full bg-white"
+              key={wave.id}
+              className="absolute top-1/2 left-1/2 origin-center"
               style={{
-                left: `${star.x}%`,
-                top: `${star.y}%`,
-                width: `${star.size}px`,
-                height: `${star.size}px`,
-                opacity: star.brightness,
-                boxShadow: `0 0 ${star.size * 2}px rgba(255,255,255,${
-                  star.brightness
-                })`,
+                transform: `translate(-50%, -50%) rotate(${wave.angle}deg)`,
               }}
+            >
+              <motion.div
+                className="origin-left"
+                initial={{ scaleX: 0, opacity: 0 }}
+                animate={{
+                  scaleX: phase === "dive" ? [0, 1] : 0.8,
+                  opacity: phase === "dive" ? [0, 1, 0.3] : 0.3,
+                  x: phase === "dive" ? [0, 1000] : 800,
+                }}
+                transition={{
+                  duration: wave.speed,
+                  ease: [0.25, 0.46, 0.45, 0.94],
+                  opacity: {
+                    times: [0, 0.5, 1],
+                  },
+                }}
+                style={{
+                  width: "1200px",
+                  height: `${wave.width}px`,
+                  background: `linear-gradient(90deg, 
+                    ${wave.color} 0%, 
+                    ${wave.color}aa 20%, 
+                    ${wave.color}66 50%, 
+                    transparent 100%
+                  )`,
+                  boxShadow: `0 0 ${wave.width * 3}px ${wave.color}`,
+                  filter: "blur(1px)",
+                }}
+              />
+            </motion.div>
+          ))}
+        </motion.div>
+
+        {/* スピード線（外側から中心へ） */}
+        {phase === "dive" &&
+          speedLines.map((line) => (
+            <motion.div
+              key={line.id}
+              className="absolute"
+              style={{
+                left: `${line.x}%`,
+                top: `${line.y}%`,
+                transform: `rotate(${line.angle}deg)`,
+                transformOrigin: "center",
+              }}
+              initial={{ opacity: 0, x: 0 }}
               animate={{
-                x: phase === "diving" ? `${-star.z * 10}vw` : 0,
-                y: phase === "diving" ? `${(50 - star.y) * 0.2}vh` : 0,
-                scale: phase === "entering" ? 0 : 1,
-                opacity: phase === "entering" ? 0 : star.brightness,
+                opacity: [0, 0.8, 0],
+                x: [-line.length, 0],
               }}
               transition={{
-                duration: phase === "diving" ? 2 - star.z / 100 : 0.5,
-                ease: phase === "diving" ? "easeIn" : "easeOut",
+                duration: 0.5,
+                delay: line.delay,
+                ease: "easeIn",
+              }}
+            >
+              <div
+                style={{
+                  width: `${line.length}px`,
+                  height: "1px",
+                  background:
+                    "linear-gradient(90deg, transparent 0%, #ffffff 50%, #3b82f6 100%)",
+                  boxShadow: "0 0 5px #3b82f6",
+                }}
+              />
+            </motion.div>
+          ))}
+
+        {/* 爆発的な中央コア */}
+        <motion.div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+        >
+          {/* パルスコア */}
+          <motion.div
+            className="absolute w-40 h-40 -translate-x-1/2 -translate-y-1/2"
+            animate={{
+              scale: phase === "dive" ? [0, 3, 1] : [1, 1.1, 1],
+            }}
+            transition={{
+              duration: phase === "dive" ? 0.7 : 3,
+              ease: phase === "dive" ? [0.25, 0.46, 0.45, 0.94] : "easeInOut",
+              repeat: phase === "sustained" ? Infinity : 0,
+            }}
+          >
+            <div
+              className="absolute inset-0 rounded-full"
+              style={{
+                background: `
+                  radial-gradient(circle, 
+                    #ffffff 0%, 
+                    #8b5cf6 10%, 
+                    #3b82f6 25%, 
+                    #06b6d4 40%, 
+                    transparent 60%
+                  )
+                `,
+                boxShadow: `
+                  0 0 60px 10px #8b5cf6,
+                  0 0 100px 20px #3b82f6,
+                  0 0 140px 30px #06b6d4,
+                  inset 0 0 40px #ffffff
+                `,
+                filter: "blur(3px)",
               }}
             />
-          ))}
-        </div>
+          </motion.div>
 
-        {/* ワープストリーク効果 */}
-        {phase === "diving" && (
-          <motion.div
-            className="absolute inset-0 flex items-center justify-center"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            {lightStreaks.map((streak) => (
+          {/* 衝撃波リング */}
+          {phase === "dive" &&
+            [0, 1, 2].map((i) => (
               <motion.div
-                key={streak.id}
-                className="absolute w-1 bg-gradient-to-t from-transparent via-white to-transparent"
-                style={{
-                  height: `${streak.length}px`,
-                  transform: `rotate(${streak.angle}deg) translateY(-${streak.distance}vh)`,
-                  transformOrigin: "center bottom",
-                }}
-                initial={{ scaleY: 0, opacity: 0 }}
+                key={i}
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2"
+                initial={{ scale: 0, opacity: 0 }}
                 animate={{
-                  scaleY: [0, 1, 0],
+                  scale: [0, 4 + i * 2],
                   opacity: [0, 0.8, 0],
                 }}
                 transition={{
-                  duration: 0.8,
-                  delay: streak.delay,
+                  duration: 0.7,
+                  delay: i * 0.1,
                   ease: "easeOut",
-                  repeat: phase === "diving" ? Infinity : 0,
-                  repeatDelay: 0.2,
+                }}
+                style={{
+                  width: "100px",
+                  height: "100px",
+                  borderColor:
+                    i === 0 ? "#8b5cf6" : i === 1 ? "#3b82f6" : "#06b6d4",
+                  boxShadow: `0 0 30px 5px ${
+                    i === 0 ? "#8b5cf6" : i === 1 ? "#3b82f6" : "#06b6d4"
+                  }`,
                 }}
               />
             ))}
-          </motion.div>
-        )}
-
-        {/* ブラックホール */}
-        <motion.div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-          animate={{
-            scale: phase === "initial" ? 0 : phase === "diving" ? 1 : 30,
-            opacity: phase === "initial" ? 0 : 1,
-          }}
-          transition={{ duration: 1.5, ease: "easeInOut" }}
-        >
-          {/* イベントホライズン */}
-          <motion.div
-            className="relative w-48 h-48"
-            animate={{
-              rotate: 360,
-            }}
-            transition={{
-              duration: 10,
-              repeat: Infinity,
-              ease: "linear",
-            }}
-          >
-            {/* 降着円盤 */}
-            <motion.div
-              className="absolute inset-0 rounded-full"
-              style={{
-                background:
-                  "conic-gradient(from 0deg, #f97316, #eab308, #84cc16, #06b6d4, #6366f1, #c026d3, #f97316)",
-                filter: "blur(8px)",
-              }}
-              animate={{
-                scale: [1, 1.2, 1],
-              }}
-              transition={{
-                duration: 2,
-                repeat: Infinity,
-                ease: "easeInOut",
-              }}
-            />
-
-            {/* ブラックホール本体 */}
-            <div className="absolute inset-8 rounded-full bg-black shadow-[0_0_100px_20px_rgba(0,0,0,0.8)]" />
-
-            {/* 重力レンズ効果 */}
-            <motion.div
-              className="absolute -inset-4 rounded-full border-2 border-white/20"
-              style={{
-                boxShadow: "inset 0 0 50px rgba(255,255,255,0.1)",
-              }}
-              animate={{
-                scale: [1, 1.1, 1],
-                opacity: [0.3, 0.6, 0.3],
-              }}
-              transition={{
-                duration: 3,
-                repeat: Infinity,
-                ease: "easeInOut",
-              }}
-            />
-          </motion.div>
         </motion.div>
 
-        {/* ダイブテキスト */}
+        {/* 画面全体のダイブエフェクト */}
         <motion.div
-          className="absolute bottom-20 left-1/2 -translate-x-1/2 text-center"
-          initial={{ opacity: 0, y: 20 }}
+          className="absolute inset-0 pointer-events-none"
+          initial={{ opacity: 0 }}
           animate={{
-            opacity: phase === "initial" ? 1 : 0,
-            y: phase === "initial" ? 0 : -20,
+            opacity: phase === "dive" ? [0, 0.5, 0] : 0,
+            scale: phase === "dive" ? [1.5, 1] : 1,
           }}
-          transition={{ duration: 0.5 }}
+          transition={{
+            duration: 0.7,
+            ease: [0.25, 0.46, 0.45, 0.94],
+          }}
+          style={{
+            background: `
+              radial-gradient(circle at center, 
+                transparent 0%, 
+                rgba(139, 92, 246, 0.2) 30%, 
+                rgba(59, 130, 246, 0.3) 60%, 
+                rgba(6, 182, 212, 0.2) 100%
+              )
+            `,
+          }}
+        />
+
+        {/* インパクトテキスト */}
+        <motion.div
+          className="absolute bottom-10 left-1/2 -translate-x-1/2"
+          initial={{ opacity: 0, scale: 3, z: -500 }}
+          animate={{
+            opacity: phase === "dive" ? [0, 0, 1] : 1,
+            scale: phase === "dive" ? [3, 0.8, 1] : 1,
+            z: phase === "dive" ? [-500, 0] : 0,
+          }}
+          transition={{
+            duration: 0.7,
+            times: [0, 0.4, 1],
+            ease: [0.25, 0.46, 0.45, 0.94],
+          }}
+          style={{ perspective: "1000px" }}
         >
-          <motion.h2
-            className="text-4xl font-bold text-white mb-4"
-            animate={{
-              opacity: [0.5, 1, 0.5],
-            }}
-            transition={{
-              duration: 2,
-              repeat: Infinity,
-              ease: "easeInOut",
+          <h1
+            className="text-4xl font-extrabold tracking-widest uppercase"
+            style={{
+              color: "#ffffff",
+              textShadow: `
+                0 0 20px #8b5cf6,
+                0 0 40px #3b82f6,
+                0 4px 8px rgba(0,0,0,0.9)
+              `,
+              transform: "rotateX(15deg)",
             }}
           >
-            Diving into Space
-          </motion.h2>
-          <motion.div className="flex justify-center space-x-1">
-            {[0, 1, 2].map((i) => (
-              <motion.div
-                key={i}
-                className="w-2 h-2 bg-white rounded-full"
-                animate={{
-                  y: [0, -10, 0],
-                }}
-                transition={{
-                  duration: 0.6,
-                  delay: i * 0.2,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
-              />
-            ))}
-          </motion.div>
+            DIVE
+          </h1>
+
+          {/* 継続時のパルス */}
+          {phase === "sustained" && (
+            <motion.div
+              className="flex justify-center space-x-3 mt-6"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.1 }}
+            >
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  className="w-12 h-1 rounded-full"
+                  style={{
+                    background: `linear-gradient(90deg, transparent, ${
+                      ["#8b5cf6", "#3b82f6", "#06b6d4"][i]
+                    }, transparent)`,
+                    boxShadow: `0 0 10px ${
+                      ["#8b5cf6", "#3b82f6", "#06b6d4"][i]
+                    }`,
+                  }}
+                  animate={{
+                    scaleX: [0.3, 1, 0.3],
+                    opacity: [0.3, 1, 0.3],
+                  }}
+                  transition={{
+                    duration: 1.5,
+                    delay: i * 0.2,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
+                />
+              ))}
+            </motion.div>
+          )}
         </motion.div>
 
-        {/* ハイパースペースエフェクト（最終段階） */}
-        {phase === "entering" && (
-          <motion.div
-            className="absolute inset-0 bg-white"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 1, 0] }}
-            transition={{ duration: 0.5, times: [0, 0.5, 1] }}
-          />
-        )}
+        {/* フラッシュトランジション */}
+        <motion.div
+          className="absolute inset-0 pointer-events-none"
+          initial={{ opacity: 0 }}
+          animate={{
+            opacity: phase === "dive" ? [0, 0.8, 0] : 0,
+            backgroundColor:
+              phase === "dive"
+                ? ["transparent", "white", "transparent"]
+                : "transparent",
+          }}
+          transition={{
+            duration: 0.7,
+            times: [0, 0.3, 1],
+          }}
+          style={{ mixBlendMode: "screen" }}
+        />
       </motion.div>
     </AnimatePresence>
   );
 };
 
-export default SpaceDiveLoading;
+export default QuantumDiveLoading;

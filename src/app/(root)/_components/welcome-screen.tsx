@@ -1,5 +1,3 @@
-// WelcomeScreen.tsx
-
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -16,7 +14,8 @@ import { Label } from "@/components/ui/label";
 import {
   AnimatePresence,
   motion,
-  useAnimationControls,
+  MotionValue,
+  useAnimationControls, // useTransformのためにインポート
   useMotionTemplate,
   useMotionValue,
   useSpring,
@@ -135,8 +134,10 @@ const floatingOrbAnimation = {
     },
   ],
 };
+
 const LogoAnimation = memo(() => {
   const [isHovered, setIsHovered] = useState(false);
+  const [clickEffects, setClickEffects] = useState<number[]>([]);
   const ref = useRef<HTMLDivElement>(null);
 
   const mouseX = useMotionValue(0);
@@ -147,15 +148,10 @@ const LogoAnimation = memo(() => {
 
   const rotateX = useTransform(springY, [-0.5, 0.5], [25, -25]);
   const rotateY = useTransform(springX, [-0.5, 0.5], [-25, 25]);
-  const scale = useTransform<[number, number], number>(
-    [springX, springY],
-    ([x, y]) =>
-      1 +
-      Math.sqrt(
-        Math.pow(x as unknown as number, 2) +
-          Math.pow(y as unknown as number, 2)
-      ) *
-        0.1
+  // ★★★ 修正点: `any` を使わない型安全な useTransform
+  const scale = useTransform<number, number>(
+    [springX, springY] as MotionValue<number>[],
+    ([latestX, latestY]) => 1 + Math.sqrt(latestX ** 2 + latestY ** 2) * 0.1
   );
 
   const handleMouseMove = useCallback(
@@ -178,6 +174,44 @@ const LogoAnimation = memo(() => {
 
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true);
+  }, []);
+
+  const handleClick = useCallback(() => {
+    const newEffectId = Date.now();
+    setClickEffects((prev) => [...prev, newEffectId]);
+
+    // 画面全体に波紋を送る
+    const ripple = document.createElement("div");
+    ripple.style.cssText = `
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 100vmax;
+      height: 100vmax;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.3), transparent 70%);
+      pointer-events: none;
+      z-index: 100;
+    `;
+    document.body.appendChild(ripple);
+
+    gsap.fromTo(
+      ripple,
+      { scale: 0, opacity: 1 },
+      {
+        scale: 2,
+        opacity: 0,
+        duration: 1.5,
+        ease: "power2.out",
+        onComplete: () => ripple.remove(),
+      }
+    );
+
+    // クリーンアップ
+    setTimeout(() => {
+      setClickEffects((prev) => prev.filter((id) => id !== newEffectId));
+    }, 2000);
   }, []);
 
   const prismaticVariants: Variants = {
@@ -209,12 +243,91 @@ const LogoAnimation = memo(() => {
       onMouseMove={handleMouseMove}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className="relative flex items-center justify-center w-[150px] h-[150px]"
+      onClick={handleClick}
+      className="relative flex items-center justify-center w-[150px] h-[150px] cursor-pointer"
       style={{
         transformStyle: "preserve-3d",
         perspective: 800,
       }}
+      whileTap={{ scale: 0.9 }}
+      transition={{ type: "spring", stiffness: 400, damping: 15 }}
     >
+      {/* クリックエフェクト */}
+      <AnimatePresence>
+        {clickEffects.map((id) => (
+          <motion.div
+            key={id}
+            className="absolute inset-0 pointer-events-none"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            {/* 爆発する光の輪 */}
+            {Array.from({ length: 12 }).map((_, i) => (
+              <motion.div
+                key={i}
+                className="absolute left-1/2 top-1/2"
+                initial={{ x: "-50%", y: "-50%" }}
+                animate={{
+                  x: `calc(-50% + ${Math.cos((i / 12) * Math.PI * 2) * 300}px)`,
+                  y: `calc(-50% + ${Math.sin((i / 12) * Math.PI * 2) * 300}px)`,
+                  opacity: [0, 1, 0],
+                  scale: [0, 2, 0],
+                }}
+                transition={{
+                  duration: 1,
+                  ease: "easeOut",
+                  delay: Math.random() * 0.1,
+                }}
+              >
+                <div
+                  className="w-4 h-4 rounded-full"
+                  style={{
+                    background: `radial-gradient(circle, ${
+                      ["#3b82f6", "#8b5cf6", "#06b6d4", "#10b981"][i % 4]
+                    }, transparent)`,
+                    boxShadow: `0 0 20px ${
+                      ["#3b82f6", "#8b5cf6", "#06b6d4", "#10b981"][i % 4]
+                    }`,
+                  }}
+                />
+              </motion.div>
+            ))}
+
+            {/* 螺旋状のパーティクル */}
+            {Array.from({ length: 30 }).map((_, i) => (
+              <motion.div
+                key={`spiral-${i}`}
+                className="absolute left-1/2 top-1/2 w-1 h-1 rounded-full"
+                style={{
+                  background: ["#60a5fa", "#a78bfa", "#34d399", "#fbbf24"][
+                    i % 4
+                  ],
+                }}
+                initial={{ x: "-50%", y: "-50%" }}
+                animate={{
+                  x: `calc(-50% + ${
+                    Math.cos((i / 30) * Math.PI * 2 + Date.now() / 1000) *
+                    (50 + i * 8)
+                  }px)`,
+                  y: `calc(-50% + ${
+                    Math.sin((i / 30) * Math.PI * 2 + Date.now() / 1000) *
+                    (50 + i * 8)
+                  }px)`,
+                  opacity: [0, 1, 0],
+                  scale: [0, 1.5, 0],
+                }}
+                transition={{
+                  duration: 1.5,
+                  ease: "easeOut",
+                  delay: i * 0.02,
+                }}
+              />
+            ))}
+          </motion.div>
+        ))}
+      </AnimatePresence>
+
       <motion.div
         className="absolute inset-0 rounded-3xl"
         style={{
@@ -402,15 +515,19 @@ export default function WelcomeScreen() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [featureClickEffects, setFeatureClickEffects] = useState<{
+    [key: string]: number[];
+  }>({});
 
   const buttonRippleControls = useAnimationControls();
   const inputIntroControls = useAnimationControls();
 
   const [isPlaceholderVisible, setIsPlaceholderVisible] = useState(true);
   const placeholderText = "あなたの名前は？";
-
-  // ★★★ 修正1: アニメーション制御用のstateを追加
   const [startTypingAnimation, setStartTypingAnimation] = useState(false);
+
+  const particleContainerRef = useRef<HTMLDivElement>(null);
+  const hiddenCaretDivRef = useRef<HTMLDivElement | null>(null);
 
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
@@ -430,13 +547,66 @@ export default function WelcomeScreen() {
     const introTimer = setTimeout(() => {
       inputRef.current?.focus();
       inputIntroControls.start("animate");
-
-      // ★★★ 修正2: stateを更新してアニメーションをトリガー
       setStartTypingAnimation(true);
     }, 1200);
 
     return () => clearTimeout(introTimer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    const div = document.createElement("div");
+    hiddenCaretDivRef.current = div;
+    document.body.appendChild(div);
+
+    const syncStyle = () => {
+      if (!hiddenCaretDivRef.current) return;
+      const style = window.getComputedStyle(input);
+      // ★★★ 修正点: `any` を使わず、安全なCSSプロパティのリストを使用
+      const props: (keyof CSSStyleDeclaration)[] = [
+        "font",
+        "letterSpacing",
+        "wordSpacing",
+        "lineHeight",
+        "textTransform",
+        "textIndent",
+        "paddingTop",
+        "paddingRight",
+        "paddingBottom",
+        "paddingLeft",
+        "borderTopWidth",
+        "borderRightWidth",
+        "borderBottomWidth",
+        "borderLeftWidth",
+      ];
+      props.forEach((prop) => {
+        // ★★★ 修正点: setProperty を使用して型安全にスタイルをセット
+        hiddenCaretDivRef.current?.style.setProperty(
+          prop as string,
+          style.getPropertyValue(prop as string)
+        );
+      });
+      div.style.position = "absolute";
+      div.style.visibility = "hidden";
+      div.style.whiteSpace = "pre-wrap";
+      div.style.top = "0";
+      div.style.left = "0";
+    };
+
+    syncStyle();
+
+    window.addEventListener("resize", syncStyle);
+
+    return () => {
+      if (hiddenCaretDivRef.current) {
+        document.body.removeChild(hiddenCaretDivRef.current);
+        hiddenCaretDivRef.current = null;
+      }
+      window.removeEventListener("resize", syncStyle);
+    };
   }, []);
 
   useEffect(() => {
@@ -575,18 +745,189 @@ export default function WelcomeScreen() {
     formRef.current?.requestSubmit();
   };
 
+  const handleFeatureClick = (
+    featureLabel: string,
+    event: React.MouseEvent
+  ) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    const effectId = Date.now();
+    setFeatureClickEffects((prev) => ({
+      ...prev,
+      [featureLabel]: [...(prev[featureLabel] || []), effectId],
+    }));
+    setTimeout(() => {
+      setFeatureClickEffects((prev) => ({
+        ...prev,
+        [featureLabel]:
+          prev[featureLabel]?.filter((id) => id !== effectId) || [],
+      }));
+    }, 2000);
+
+    const colors = featureLabel.includes("つながり")
+      ? ["#60a5fa", "#3b82f6", "#2563eb"]
+      : ["#a78bfa", "#8b5cf6", "#7c3aed"];
+
+    const warpElement = document.createElement("div");
+    warpElement.style.cssText = `
+      position: fixed;
+      left: ${centerX}px;
+      top: ${centerY}px;
+      transform: translate(-50%, -50%);
+      width: 100vmax;
+      height: 100vmax;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 999;
+      background: radial-gradient(circle, transparent 0%, rgba(139, 92, 246, 0.05) 20%, transparent 40%);
+      backdrop-filter: blur(0px);
+    `;
+    document.body.appendChild(warpElement);
+    gsap.timeline().fromTo(
+      warpElement,
+      { scale: 0, opacity: 1 },
+      {
+        scale: 2.5,
+        opacity: 0,
+        duration: 1.2,
+        ease: "expo.out",
+        onUpdate: function () {
+          const progress = this.progress();
+          const blurAmount = Math.sin(progress * Math.PI) * 4;
+          warpElement.style.backdropFilter = `blur(${blurAmount}px)`;
+        },
+        onComplete: () => warpElement.remove(),
+      }
+    );
+
+    const particleCount = 40;
+    for (let i = 0; i < particleCount; i++) {
+      const particle = document.createElement("div");
+      const angle = Math.random() * Math.PI * 2;
+      const velocity = 100 + Math.random() * 250;
+      const size = 1.5 + Math.random() * 2.5;
+      particle.style.cssText = `
+        position: fixed;
+        left: ${centerX}px;
+        top: ${centerY}px;
+        width: ${size}px;
+        height: ${size}px;
+        background: ${colors[i % colors.length]};
+        border-radius: 50%;
+        pointer-events: none;
+        z-index: 1001;
+        box-shadow: 0 0 ${size * 2}px ${colors[i % colors.length]};
+      `;
+      document.body.appendChild(particle);
+      gsap.to(particle, {
+        x: Math.cos(angle) * velocity,
+        y: Math.sin(angle) * velocity,
+        opacity: 0,
+        scale: 0,
+        duration: 1.2 + Math.random() * 0.8,
+        ease: "power3.out",
+        onComplete: () => particle.remove(),
+      });
+    }
+  };
+
+  const createTypingParticle = useCallback((x: number, y: number) => {
+    const container = particleContainerRef.current;
+    if (!container) return;
+
+    const particleCount = Math.floor(Math.random() * 4) + 3; // 3-6個
+    const colors = ["#ffbe0b", "#fb5607", "#ff006e", "#8338ec", "#3a86ff"];
+
+    for (let i = 0; i < particleCount; i++) {
+      const particle = document.createElement("div");
+      container.appendChild(particle);
+      const size = Math.random() * 5 + 2;
+      const color1 = colors[Math.floor(Math.random() * colors.length)];
+      const color2 = colors[Math.floor(Math.random() * colors.length)];
+
+      gsap.set(particle, {
+        position: "absolute",
+        left: x,
+        top: y,
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: `radial-gradient(circle, ${color1}, ${color2})`,
+        opacity: 1,
+        scale: 1,
+      });
+
+      const angle = Math.random() * Math.PI * 2 - Math.PI / 2; // 上方向に飛散しやすく
+      const velocity = Math.random() * 60 + 30;
+
+      gsap.to(particle, {
+        x: `+=${Math.cos(angle) * velocity}`,
+        y: `+=${Math.sin(angle) * velocity - 10}`, // 少し上向きに
+        opacity: 0,
+        scale: 0,
+        duration: Math.random() * 0.6 + 0.5,
+        ease: "power2.out",
+        onComplete: () => {
+          if (particle.parentNode) {
+            particle.parentNode.removeChild(particle);
+          }
+        },
+      });
+    }
+  }, []);
+
+  const handleUsernameChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const input = e.target;
+      const value = input.value;
+      const prevValue = username;
+
+      setUsername(value);
+      setIsPlaceholderVisible(value === "");
+      if (error) setError(null);
+
+      if (value.length < prevValue.length) return;
+
+      const hiddenDiv = hiddenCaretDivRef.current;
+      if (hiddenDiv && inputRef.current) {
+        const inputRect = inputRef.current.getBoundingClientRect();
+        const selectionEnd = input.selectionEnd || 0;
+
+        const textBeforeCaret = value.substring(0, selectionEnd);
+        hiddenDiv.textContent = textBeforeCaret;
+
+        const caretSpan = document.createElement("span");
+        hiddenDiv.appendChild(caretSpan);
+
+        const caretRect = caretSpan.getBoundingClientRect();
+
+        const x = caretRect.left + window.scrollX;
+        const y = inputRect.top + inputRect.height / 2 + window.scrollY;
+
+        createTypingParticle(x, y);
+
+        hiddenDiv.removeChild(caretSpan);
+      }
+    },
+    [username, error, createTypingParticle]
+  );
+
   const features = [
     {
       icon: Users,
       label: "つながりの3D可視化",
       delay: 0.2,
-      color: "from-blue-400 to-cyan-400",
+      color: "from-red-300 to-sky-400",
+      shadowColor: "rgba(14, 165, 233, 0.4)",
     },
     {
       icon: MessageSquare,
       label: "リアルタイムなチャット体験",
       delay: 0.3,
-      color: "from-indigo-400 to-blue-400",
+      color: "from-yellow-300 to-green-500",
+      shadowColor: "rgba(139, 92, 246, 0.4)",
     },
   ];
 
@@ -605,17 +946,45 @@ export default function WelcomeScreen() {
     },
   };
 
+  const containerVariants: Variants = {
+    initial: { opacity: 0, scale: 0.9, y: 20 },
+    animate: {
+      opacity: 1,
+      scale: 1,
+      y: 0,
+      transition: {
+        duration: 0.8,
+        ease: [0.21, 1.11, 0.81, 0.99],
+        staggerChildren: 0.1,
+      },
+    },
+  };
+
+  const itemVariants: Variants = {
+    initial: { opacity: 0, y: 20 },
+    animate: {
+      opacity: 1,
+      y: 0,
+      transition: { duration: 0.6, ease: "easeOut" },
+    },
+  };
+
   return (
     <div className="min-h-screen bg-white dark:bg-slate-900 overflow-hidden relative flex items-center justify-center p-4">
+      <div
+        ref={particleContainerRef}
+        className="fixed inset-0 pointer-events-none z-[9999]"
+      />
+
       <div className="fixed inset-0 bg-gradient-to-br from-blue-50/50 via-white to-purple-50/50 dark:from-slate-900 dark:via-gray-900 dark:to-purple-900/20" />
       <motion.div className="fixed inset-0 opacity-30" style={{ background }} />
       <div className="fixed inset-0 backdrop-blur-[100px]" />
 
       <motion.div
         ref={containerRef}
-        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: [0.21, 1.11, 0.81, 0.99] }}
+        variants={containerVariants}
+        initial="initial"
+        animate="animate"
         className="relative z-20"
       >
         <motion.div
@@ -661,103 +1030,102 @@ export default function WelcomeScreen() {
 
             <CardHeader className="space-y-1 relative z-10">
               <motion.div
-                initial={{ y: -30, opacity: 0, scale: 0.8 }}
-                animate={{ y: 0, opacity: 1, scale: 1 }}
-                transition={{
-                  delay: 0.2,
-                  duration: 0.8,
-                  ease: [0.21, 1.11, 0.81, 0.99],
-                }}
+                variants={itemVariants}
                 className="flex items-center justify-center mb-4"
               >
                 <LogoAnimation />
               </motion.div>
 
-              <CardTitle className="text-3xl sm:text-4xl font-bold text-center">
-                <motion.span
-                  className="text-3xl font-bold tracking-tight font-sans bg-gradient-to-r from-indigo-300 to-purple-700 bg-clip-text text-transparent"
-                  animate={{
-                    backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
-                  }}
-                  transition={{ duration: 5, repeat: Infinity, ease: "linear" }}
-                  style={{ backgroundSize: "200% 100%" }}
-                >
-                  Oga Space へようこそ
-                </motion.span>
-              </CardTitle>
+              <motion.div variants={itemVariants}>
+                <CardTitle className="text-3xl sm:text-4xl font-bold text-center">
+                  <motion.span
+                    className="text-3xl font-bold tracking-tight font-sans bg-gradient-to-r from-yellow-400 to-red-500 bg-clip-text text-transparent"
+                    animate={{
+                      backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
+                    }}
+                    transition={{
+                      duration: 5,
+                      repeat: Infinity,
+                      ease: "linear",
+                    }}
+                    style={{ backgroundSize: "200% 100%" }}
+                  >
+                    Oga Space へようこそ
+                  </motion.span>
+                </CardTitle>
 
-              <CardDescription className="text-center text-base sm:text-lg pt-2">
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 }}
-                  className="flex flex-col items-center gap-1"
-                >
-                  <p className="text-gray-700 dark:text-gray-400 font-sans font-bold">
-                    &quot;重力級&quot;のつながり、チャットを超えるリアル
-                  </p>
-                </motion.div>
-              </CardDescription>
+                <CardDescription className="text-center text-base sm:text-lg pt-2">
+                  <div className="flex flex-col items-center gap-1">
+                    <p className="text-gray-700 dark:text-gray-400 font-sans font-bold">
+                      &quot;重力級&quot;のつながり、チャットを超えるリアル
+                    </p>
+                  </div>
+                </CardDescription>
+              </motion.div>
             </CardHeader>
 
             <CardContent className="space-y-6 relative z-10">
-              <div className="flex flex-wrap justify-center gap-4 py-4">
+              <motion.div
+                variants={itemVariants}
+                className="flex flex-wrap justify-center gap-4 py-4"
+              >
                 {features.map((feature) => (
                   <motion.div
                     key={feature.label}
-                    variants={{
-                      initial: { y: 30, opacity: 0 },
-                      animate: {
-                        y: 0,
-                        opacity: 1,
-                        transition: {
-                          delay: feature.delay,
-                          duration: 0.6,
-                          ease: "easeOut",
-                        },
-                      },
-                      hover: {
-                        y: -8,
-                        scale: 1.05,
-                        transition: {
-                          type: "spring",
-                          stiffness: 300,
-                          damping: 15,
-                        },
+                    whileHover={{
+                      y: -8,
+                      scale: 1.05,
+                      transition: {
+                        type: "spring",
+                        stiffness: 300,
+                        damping: 15,
                       },
                     }}
-                    initial="initial"
-                    animate="animate"
-                    whileHover="hover"
-                    className="flex-1 min-w-[190px] max-w-[200px]"
+                    whileTap={{ scale: 0.95 }}
+                    onClick={(e) => handleFeatureClick(feature.label, e)}
+                    className="flex-1 min-w-[190px] max-w-[200px] cursor-pointer"
                     style={{ transformPerspective: 1000 }}
                   >
-                    <div className="relative group cursor-pointer h-full">
+                    <div className="relative group h-full">
+                      <AnimatePresence>
+                        {featureClickEffects[feature.label]?.map((id) => (
+                          <motion.div
+                            key={id}
+                            className="absolute inset-0 rounded-2xl pointer-events-none z-0"
+                            initial={{ scale: 0.5, opacity: 1 }}
+                            animate={{
+                              scale: 2,
+                              opacity: 0,
+                            }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.7, ease: "easeOut" }}
+                            style={{
+                              background: `radial-gradient(circle, ${feature.shadowColor}, transparent 70%)`,
+                            }}
+                          />
+                        ))}
+                      </AnimatePresence>
+
                       <motion.div
-                        className={`absolute -inset-2 bg-gradient-to-br ${feature.color} rounded-2xl blur-lg`}
-                        variants={{
-                          hover: { opacity: 0.8 },
-                          initial: { opacity: 0 },
-                        }}
-                        transition={{ duration: 0.3 }}
+                        className={`absolute -inset-2 bg-gradient-to-br ${feature.color} rounded-2xl blur-lg transition-opacity duration-300 group-hover:opacity-80 opacity-0`}
                       />
                       <div className="relative backdrop-blur-md bg-white/80 dark:bg-white/10 rounded-2xl p-4 border border-white/20 shadow-lg group-hover:shadow-2xl transition-shadow duration-300 h-full flex flex-col items-center justify-center text-center">
                         <div className="flex flex-col items-center gap-3">
-                          <div
+                          <motion.div
                             className={`p-3 rounded-xl bg-gradient-to-br ${feature.color} shadow-lg`}
+                            whileHover={{ rotate: [0, -10, 10, -10, 0] }}
+                            transition={{ duration: 0.5 }}
                           >
                             <feature.icon className="h-6 w-6 text-white" />
-                          </div>
+                          </motion.div>
                           <span className="text-xs font-medium text-gray-700 dark:text-gray-300 leading-tight font-sans">
                             {feature.label}
                           </span>
                         </div>
                         <motion.div
-                          className="absolute inset-0 rounded-2xl overflow-hidden"
-                          variants={{
-                            hover: { opacity: 1 },
-                            initial: { opacity: 0 },
-                          }}
+                          className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none"
+                          initial={{ opacity: 0 }}
+                          whileHover={{ opacity: 1 }}
                         >
                           <motion.div
                             className="w-full h-full"
@@ -765,15 +1133,13 @@ export default function WelcomeScreen() {
                               background:
                                 "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.7) 50%, transparent 60%)",
                             }}
-                            variants={{
-                              hover: {
-                                x: "100%",
-                                transition: {
-                                  duration: 0.8,
-                                  ease: "easeInOut",
-                                },
-                              },
-                              initial: { x: "-100%" },
+                            initial={{ x: "-100%" }}
+                            animate={{ x: "100%" }}
+                            transition={{
+                              duration: 0.8,
+                              ease: "easeInOut",
+                              repeat: Infinity,
+                              repeatDelay: 0.5,
                             }}
                           />
                         </motion.div>
@@ -781,33 +1147,20 @@ export default function WelcomeScreen() {
                     </div>
                   </motion.div>
                 ))}
-              </div>
+              </motion.div>
 
               <motion.form
                 ref={formRef}
                 onSubmit={handleSubmit}
-                variants={{
-                  initial: { y: 20, opacity: 0 },
-                  animate: { y: 0, opacity: 1, transition: { delay: 0.6 } },
-                  hover: {
-                    y: -5,
-                    scale: 1.01,
-                    transition: { type: "spring", stiffness: 300, damping: 20 },
-                  },
+                variants={itemVariants}
+                whileHover={{
+                  y: -5,
+                  scale: 1.01,
+                  transition: { type: "spring", stiffness: 300, damping: 20 },
                 }}
-                initial="initial"
-                animate="animate"
-                whileHover="hover"
                 className="relative group"
               >
-                <motion.div
-                  className="absolute -inset-2.5 bg-gradient-to-r from-blue-400 to-purple-500 rounded-2xl blur-xl"
-                  variants={{
-                    hover: { opacity: 0.7 },
-                    initial: { opacity: 0 },
-                  }}
-                  transition={{ duration: 0.4 }}
-                />
+                <motion.div className="absolute -inset-2.5 bg-gradient-to-r from-blue-400 to-purple-500 rounded-2xl blur-xl opacity-0 group-hover:opacity-70 transition-opacity duration-400" />
                 <div className="relative p-4 backdrop-blur-md bg-white/70 dark:bg-white/10 border border-white/20 rounded-2xl shadow-lg">
                   <div className="space-y-3">
                     <Label
@@ -838,21 +1191,25 @@ export default function WelcomeScreen() {
                       {isPlaceholderVisible && (
                         <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none text-lg text-gray-400 dark:text-gray-500 z-10">
                           {placeholderText.split("").map((char, i) => (
-                            // ★★★ 修正3: stateを使ってアニメーションを宣言的に制御
                             <motion.span
                               key={i}
-                              initial={{ opacity: 0 }}
+                              initial={{ opacity: 0, y: 5 }}
                               animate={{
                                 opacity: startTypingAnimation ? 1 : 0,
+                                y: startTypingAnimation ? 0 : 5,
                               }}
                               transition={{
-                                duration: 0.1,
+                                type: "spring",
+                                damping: 15,
+                                stiffness: 300,
+                                duration: 0.2,
                                 delay: startTypingAnimation
                                   ? i * 0.07 + 0.5
                                   : 0,
                               }}
+                              className="inline-block"
                             >
-                              {char}
+                              {char === " " ? "\u00A0" : char}
                             </motion.span>
                           ))}
                         </div>
@@ -863,14 +1220,10 @@ export default function WelcomeScreen() {
                         id="username"
                         placeholder=""
                         value={username}
-                        onChange={(e) => {
-                          setUsername(e.target.value);
-                          setIsPlaceholderVisible(e.target.value === "");
-                          if (error) setError(null);
-                        }}
+                        onChange={handleUsernameChange}
                         required
                         disabled={isLoading}
-                        className="font-sans  caret-blue-500 dark:caret-blue-400 backdrop-blur-sm bg-white/60 dark:bg-white/10 border-white/30 hover:border-blue-300/50 focus:border-blue-500/50 pl-4 pr-12 py-6 text-lg rounded-xl shadow-inner w-full relative"
+                        className="font-sans caret-blue-500 dark:caret-blue-400 backdrop-blur-sm bg-white/60 dark:bg-white/10 border-white/30 hover:border-blue-300/50 focus:border-blue-500/50 pl-4 pr-12 py-6 text-lg rounded-xl shadow-inner w-full relative"
                         whileFocus={{
                           boxShadow: [
                             "inset 0 2px 4px rgba(0,0,0,0.06), 0 0 0px 0px rgba(59, 130, 246, 0.3)",
@@ -929,7 +1282,8 @@ export default function WelcomeScreen() {
                 </div>
                 <motion.div
                   className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none"
-                  variants={{ hover: { opacity: 1 }, initial: { opacity: 0 } }}
+                  initial={{ opacity: 0 }}
+                  whileHover={{ opacity: 1 }}
                 >
                   <motion.div
                     className="w-full h-full"
@@ -937,12 +1291,13 @@ export default function WelcomeScreen() {
                       background:
                         "linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.6) 50%, transparent 70%)",
                     }}
-                    variants={{
-                      hover: {
-                        x: "100%",
-                        transition: { duration: 1, ease: "easeInOut" },
-                      },
-                      initial: { x: "-150%" },
+                    initial={{ x: "-150%" }}
+                    animate={{ x: "100%" }}
+                    transition={{
+                      duration: 1.2,
+                      ease: "easeInOut",
+                      repeat: Infinity,
+                      repeatDelay: 0.8,
                     }}
                   />
                 </motion.div>
@@ -951,6 +1306,7 @@ export default function WelcomeScreen() {
 
             <CardFooter className="relative z-10">
               <motion.div
+                variants={itemVariants}
                 className="w-full"
                 whileHover={{
                   scale: !isLoading ? 1.07 : 1,

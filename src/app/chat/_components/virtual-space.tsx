@@ -29,11 +29,13 @@ interface SpaceStationProps {
   onUserMove: (userId: string, newPosition: { x: number; y: number }) => void;
 }
 
+// ▼▼▼ 変更点 ▼▼▼
+// 重力関連の物理定数をすべて削除
 // --- 物理定数 ---
-const G = 25;
-const BLACK_HOLE_MASS = 25;
-const SPACESHIP_MASS = 1.0;
-const INTER_AVATAR_GRAVITY_SCALE = 0.5;
+// const G = 25;
+// const BLACK_HOLE_MASS = 25;
+// const SPACESHIP_MASS = 1.0;
+// const INTER_AVATAR_GRAVITY_SCALE = 0.5;
 
 // --- ビジュアル定数 ---
 const EVENT_HORIZON_RADIUS = 7.5;
@@ -45,16 +47,16 @@ const JET_BASE_RADIUS = 1.0;
 // --- 挙動に関する定数 ---
 const RESPAWN_RADIUS_MIN = 150;
 const RESPAWN_RADIUS_MAX = 220;
-const ORBIT_SPEED_SCALE = 0.6;
-const DAMPING = 0.98;
+// ▼▼▼ 変更点 ▼▼▼
+// 重力関連の挙動に関する定数をすべて削除
+// const ORBIT_SPEED_SCALE = 0.6;
+// const DAMPING = 0.98;
+// const ORBIT_STABLE_RADIUS = 25.0;
+// const ORBIT_INFLUENCE_RADIUS = 50.0;
+// const ORBIT_PULL_FORCE = 0.5;
+// const ORBIT_VELOCITY_LERP_FACTOR = 0.03;
 
-// --- 挙動を「ゆったり」にするための定数調整 ---
-const ORBIT_STABLE_RADIUS = 25.0;
-const ORBIT_INFLUENCE_RADIUS = 50.0;
-const ORBIT_PULL_FORCE = 0.5;
-const ORBIT_VELOCITY_LERP_FACTOR = 0.03;
-
-// --- カメラコントローラークラス ---
+// --- カメラコントローラークラス (変更なし) ---
 class CameraController {
   camera: THREE.PerspectiveCamera;
   domElement: HTMLElement;
@@ -140,11 +142,12 @@ export default function SpaceStation({
     plane: THREE.Mesh | null;
     avatarMeshes: { [key: string]: THREE.Group };
     avatarElements: { [key: string]: HTMLDivElement | null };
-    physicsState: {
-      [key: string]: {
-        velocity: THREE.Vector3;
-      };
-    };
+    // ▼▼▼ 変更点: 物理計算が不要になったため、physicsStateを削除 ▼▼▼
+    // physicsState: {
+    //   [key: string]: {
+    //     velocity: THREE.Vector3;
+    //   };
+    // };
     targetPositions: { [key: string]: THREE.Vector3 };
     blackHoleGroup: THREE.Group | null;
     volumetricNebula: THREE.Mesh | null;
@@ -158,7 +161,8 @@ export default function SpaceStation({
     plane: null,
     avatarMeshes: {},
     avatarElements: {},
-    physicsState: {},
+    // ▼▼▼ 変更点: physicsStateの初期化を削除 ▼▼▼
+    // physicsState: {},
     targetPositions: {},
     blackHoleGroup: null,
     volumetricNebula: null,
@@ -170,6 +174,7 @@ export default function SpaceStation({
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   const throttledSendPosition = useRef(
+    // 自分のアバターをドラッグした時のみ送信されるので、頻度はそのままでOK
     throttle((userId: string, newPosition: { x: number; y: number }) => {
       onUserMove(userId, newPosition);
     }, 30)
@@ -180,10 +185,7 @@ export default function SpaceStation({
     return "grab";
   }, [draggedUserId, isOrbitingCamera]);
 
-  // ▼▼▼ 変更点: チュートリアルの状態管理を showTutorial のみに集約 ▼▼▼
-  // チュートリアルの表示・非表示をこのstateで管理します
   const [showTutorial, setShowTutorial] = useState(true);
-  // ▲▲▲ 変更ここまで ▲▲▲
 
   // --- Three.js初期化 ---
   useEffect(() => {
@@ -221,6 +223,7 @@ export default function SpaceStation({
     state.scene.add(new THREE.HemisphereLight(0x6080ff, 0x302040, 0.6));
 
     // ビジュアル要素の作成 (変更なし)
+    // ... (星、星雲、ブラックホールなどのコードは変更なしなので省略)
     const starCount = 25000;
     const starVertices = [];
     const starColors = [];
@@ -448,7 +451,7 @@ export default function SpaceStation({
       const time = clock.getElapsedTime();
       state.controls?.update();
 
-      // (ビジュアル更新、物理シミュレーションのロジックは変更なし)
+      // ビジュアルエフェクトの更新 (変更なし)
       if (state.blackHoleGroup) {
         state.blackHoleGroup.rotation.y += delta * 0.02;
         state.blackHoleGroup.children.forEach((child) => {
@@ -474,6 +477,7 @@ export default function SpaceStation({
         );
       }
 
+      // ▼▼▼ 変更点: パフォーマンス改善のため、物理シミュレーションを完全に削除 ▼▼▼
       if (
         state.scene &&
         state.avatarMeshes &&
@@ -482,88 +486,24 @@ export default function SpaceStation({
         const userIds = Object.keys(state.avatarMeshes);
         userIds.forEach((id) => {
           const mesh = state.avatarMeshes[id];
-          const physics = state.physicsState[id];
-          if (!mesh || !physics) return;
-          if (id === currentUser && id !== draggedUserId) {
-            const pos = mesh.position;
-            const vel = physics.velocity;
-            const acceleration = new THREE.Vector3();
-            const distToCenter = pos.length();
-            if (distToCenter < ORBIT_INFLUENCE_RADIUS) {
-              const influenceFactor = THREE.MathUtils.smoothstep(
-                distToCenter,
-                ORBIT_INFLUENCE_RADIUS,
-                ORBIT_STABLE_RADIUS
-              );
-              const orbitSpeed =
-                Math.sqrt((G * BLACK_HOLE_MASS) / distToCenter) *
-                ORBIT_SPEED_SCALE;
-              const tangentDir = new THREE.Vector3(
-                -pos.z,
-                0,
-                pos.x
-              ).normalize();
-              const idealVelocity = tangentDir.multiplyScalar(orbitSpeed);
-              vel.lerp(
-                idealVelocity,
-                influenceFactor * ORBIT_VELOCITY_LERP_FACTOR
-              );
-              const radialOffset = distToCenter - ORBIT_STABLE_RADIUS;
-              const pullForce = pos
-                .clone()
-                .normalize()
-                .multiplyScalar(-radialOffset * ORBIT_PULL_FORCE);
-              acceleration.add(pullForce.multiplyScalar(influenceFactor));
-            } else {
-              if (distToCenter > 0.1) {
-                const forceMag =
-                  (G * BLACK_HOLE_MASS * SPACESHIP_MASS) /
-                  (distToCenter * distToCenter);
-                const forceDir = pos
-                  .clone()
-                  .normalize()
-                  .multiplyScalar(-forceMag);
-                acceleration.add(forceDir);
-              }
-            }
-            userIds.forEach((otherId) => {
-              if (id === otherId) return;
-              const otherMesh = state.avatarMeshes[otherId];
-              if (!otherMesh) return;
-              const otherPos = otherMesh.position;
-              const distVec = new THREE.Vector3().subVectors(otherPos, pos);
-              const distSq = distVec.lengthSq();
-              if (distSq > 25) {
-                const forceMag =
-                  (G *
-                    SPACESHIP_MASS *
-                    SPACESHIP_MASS *
-                    INTER_AVATAR_GRAVITY_SCALE) /
-                  distSq;
-                distVec.normalize().multiplyScalar(forceMag);
-                acceleration.add(distVec);
-              }
-            });
-            vel.add(acceleration.multiplyScalar(delta));
-            vel.multiplyScalar(DAMPING);
-            pos.add(vel.clone().multiplyScalar(delta));
-            throttledSendPosition(id, { x: pos.x, y: pos.z });
-          } else if (id !== currentUser) {
+          if (!mesh) return;
+
+          // 他のユーザーのアバターをサーバーから送られてきた位置へ滑らかに移動させる
+          if (id !== currentUser) {
             const targetPosition = state.targetPositions[id];
             if (targetPosition) {
+              // lerp (線形補間) を使ってスムーズな移動を表現
               const lerpFactor = 1.0 - Math.pow(0.01, delta);
               mesh.position.lerp(targetPosition, lerpFactor);
-              const estimatedVelocity = targetPosition
-                .clone()
-                .sub(mesh.position)
-                .divideScalar(delta);
-              physics.velocity.lerp(estimatedVelocity, lerpFactor * 0.1);
             }
           }
+          // 自分のアバターは、ドラッグ操作以外では動かさない。
+          // 重力計算は行わないため、ブラウザは固まらない。
         });
       }
+      // ▲▲▲ 変更ここまで ▲▲▲
 
-      // UI更新
+      // UI更新 (変更なし)
       if (state.camera && containerRef.current) {
         const width = containerRef.current.offsetWidth;
         const height = containerRef.current.offsetHeight;
@@ -614,7 +554,7 @@ export default function SpaceStation({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- ユーザーの追加/削除/更新 (変更なし) ---
+  // --- ユーザーの追加/削除/更新 ---
   useEffect(() => {
     const state = threeJsState.current;
     if (!state.scene || containerSize.width === 0 || containerSize.height === 0)
@@ -622,13 +562,14 @@ export default function SpaceStation({
 
     const existingUserIds = new Set(users.map((u) => u.id));
 
+    // ▼▼▼ 変更点: physicsStateの削除処理を削除 ▼▼▼
     Object.keys(state.avatarMeshes).forEach((userId) => {
       if (!existingUserIds.has(userId)) {
         if (state.avatarMeshes[userId])
           state.scene!.remove(state.avatarMeshes[userId]);
         delete state.avatarMeshes[userId];
         delete state.avatarElements[userId];
-        delete state.physicsState[userId];
+        // delete state.physicsState[userId];
         delete state.targetPositions[userId];
       }
     });
@@ -640,9 +581,10 @@ export default function SpaceStation({
         group.userData = { userId: user.id };
         state.scene!.add(group);
         state.avatarMeshes[user.id] = group;
-        state.physicsState[user.id] = {
-          velocity: new THREE.Vector3(),
-        };
+        // ▼▼▼ 変更点: physicsStateの初期化を削除 ▼▼▼
+        // state.physicsState[user.id] = {
+        //   velocity: new THREE.Vector3(),
+        // };
 
         if (user.position && (user.position.x !== 0 || user.position.y !== 0)) {
           group.position.set(user.position.x, 0, user.position.y);
@@ -658,21 +600,12 @@ export default function SpaceStation({
           );
         }
 
-        const position = group.position;
-        const dist = position.length();
-
-        if (user.id === currentUser && dist > 0) {
-          const tangent = new THREE.Vector3(
-            -position.z,
-            0,
-            position.x
-          ).normalize();
-          const speed =
-            Math.sqrt((G * BLACK_HOLE_MASS) / dist) * ORBIT_SPEED_SCALE;
-          state.physicsState[user.id].velocity.copy(
-            tangent.multiplyScalar(speed)
-          );
-        }
+        // ▼▼▼ 変更点: 初期速度の設定を削除 ▼▼▼
+        // const position = group.position;
+        // const dist = position.length();
+        // if (user.id === currentUser && dist > 0) {
+        //   ...
+        // }
 
         if (user.id !== currentUser) {
           state.targetPositions[user.id] = group.position.clone();
@@ -700,6 +633,7 @@ export default function SpaceStation({
     setIsOrbitingCamera(true);
     threeJsState.current.controls?.onMouseDown(event.nativeEvent);
   }, []);
+
   const handleMouseMove = useCallback(
     (event: React.MouseEvent) => {
       const state = threeJsState.current;
@@ -719,10 +653,11 @@ export default function SpaceStation({
           if (avatarGroup) {
             avatarGroup.position.x = point.x;
             avatarGroup.position.z = point.z;
-            const physics = state.physicsState[draggedUserId];
-            if (physics) {
-              physics.velocity.set(0, 0, 0);
-            }
+            // ▼▼▼ 変更点: physicsStateへのアクセスを削除 ▼▼▼
+            // const physics = state.physicsState[draggedUserId];
+            // if (physics) {
+            //   physics.velocity.set(0, 0, 0);
+            // }
             if (state.targetPositions[draggedUserId]) {
               delete state.targetPositions[draggedUserId];
             }
@@ -735,6 +670,7 @@ export default function SpaceStation({
     },
     [throttledSendPosition, draggedUserId, isOrbitingCamera]
   );
+
   const handleMouseUp = useCallback(() => {
     if (isOrbitingCamera) {
       setIsOrbitingCamera(false);
@@ -744,6 +680,7 @@ export default function SpaceStation({
       setDraggedUserId(null);
     }
   }, [isOrbitingCamera, draggedUserId]);
+
   const handleAvatarMouseDown = useCallback(
     (event: React.MouseEvent, userId: string) => {
       event.stopPropagation();
@@ -753,6 +690,7 @@ export default function SpaceStation({
     },
     [currentUser]
   );
+
   const handleWheel = useCallback((event: React.WheelEvent) => {
     threeJsState.current.controls?.onMouseWheel(event.nativeEvent);
   }, []);
@@ -787,7 +725,7 @@ export default function SpaceStation({
         ))}
       </div>
 
-      {/* ▼▼▼ 変更点: チュートリアルUIの表示ロジックを修正 ▼▼▼ */}
+      {/* チュートリアルUI (変更なし) */}
       <div
         className="absolute bottom-8 right-8 pointer-events-auto z-40 tutorial-container"
         style={{ maxWidth: "calc(100vw - 64px)" }}
@@ -821,7 +759,7 @@ export default function SpaceStation({
                       <Sparkles className="w-4 h-4 text-white" />
                     </motion.div>
                     <h3 className="text-white text-lg font-semibold font-sans bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400">
-                      あそびばチュートリアル
+                      ブラックホール チュートリアル
                     </h3>
                   </div>
                   <motion.button
@@ -851,9 +789,11 @@ export default function SpaceStation({
                       <h4 className="text-white/90 font-medium mb-1">
                         アバターを移動
                       </h4>
-                      <p className="text-white/60 text-sm leading-relaxed">
-                        自分のアイコンをドラッグして、3D空間内を自由に移動できます
-                      </p>
+                      <span className="text-white/60 text-sm leading-relaxed">
+                        自分のアイコンをドラッグして、
+                        <br />
+                        3D空間内を自由に移動しよう
+                      </span>
                     </div>
                   </motion.div>
 
@@ -874,7 +814,10 @@ export default function SpaceStation({
                         視点を変更
                       </h4>
                       <p className="text-white/60 text-sm leading-relaxed">
-                        背景をドラッグして視点を回転、スクロールでズームイン/アウト
+                        背景をドラッグして視点を回転
+                      </p>
+                      <p className="text-white/60 text-sm leading-relaxed">
+                        スクロールでズームイン/アウト
                       </p>
                     </div>
                   </motion.div>
@@ -907,7 +850,6 @@ export default function SpaceStation({
           )}
         </AnimatePresence>
       </div>
-      {/* ▲▲▲ 変更ここまで ▲▲▲ */}
     </div>
   );
 }

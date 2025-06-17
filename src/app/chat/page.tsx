@@ -43,12 +43,16 @@ export default function ChatPage() {
   }, [router]);
 
   // --- Hooks ---
+  // ▼▼▼ useChatSocketから受け取る値をページネーション対応版に更新 ▼▼▼
   const {
     users,
-    messages,
+    messages, // 表示中のメッセージリスト
     typingUsers,
     connectionStatus,
     errorMessage,
+    hasMoreMessages, // さらに過去のメッセージがあるか
+    isFetchingHistory, // 過去メッセージを取得中か
+    fetchHistory, // 過去メッセージを取得する関数
     sendMessage,
     sendTypingUpdate,
     sendUserMove,
@@ -58,6 +62,7 @@ export default function ChatPage() {
     clearChatHistory,
     logout,
   } = useChatSocket({ username });
+  // ▲▲▲
 
   // 3. ページレベルでの接続タイムアウト監視 (安全策として維持)
   useEffect(() => {
@@ -95,6 +100,7 @@ export default function ChatPage() {
 
   // --- Memos ---
   const currentUserId = useMemo(() => {
+    // users配列から現在のユーザーのIDを見つける
     return users.find((user) => user.name === username)?.id || null;
   }, [users, username]);
 
@@ -161,6 +167,14 @@ export default function ChatPage() {
     },
     [sendUserMove]
   );
+
+  // ▼▼▼ 過去ログを読み込むためのハンドラを追加 ▼▼▼
+  const handleLoadMore = useCallback(() => {
+    if (!isFetchingHistory) {
+      fetchHistory(); // useChatSocketから提供される関数を呼び出す
+    }
+  }, [isFetchingHistory, fetchHistory]);
+  // ▲▲▲
 
   const handleLeave = useCallback(() => {
     logout();
@@ -250,6 +264,7 @@ export default function ChatPage() {
                   <div className="hidden md:block h-full">
                     <Tabs value={activeTab} className="h-full">
                       <TabsContent value="chat" className="h-full m-0 p-0">
+                        {/* ▼▼▼ ChatInterfaceに新しいpropsを渡す ▼▼▼ */}
                         <ChatInterface
                           messages={messages}
                           typingUsers={typingUsers}
@@ -262,7 +277,11 @@ export default function ChatPage() {
                           onDeleteMessage={handleDelete}
                           replyingTo={replyingTo}
                           setReplyingTo={setReplyingTo}
+                          hasMoreMessages={hasMoreMessages}
+                          isFetchingHistory={isFetchingHistory}
+                          onLoadMore={handleLoadMore}
                         />
+                        {/* ▲▲▲ */}
                       </TabsContent>
                       <TabsContent value="users" className="h-full m-0 p-0">
                         <UserList users={users} typingUsers={typingUsers} />
@@ -270,6 +289,7 @@ export default function ChatPage() {
                     </Tabs>
                   </div>
                   <div className="md:hidden h-full">
+                    {/* ▼▼▼ ChatInterfaceに新しいpropsを渡す (モバイル用) ▼▼▼ */}
                     <ChatInterface
                       messages={messages}
                       typingUsers={typingUsers}
@@ -282,7 +302,11 @@ export default function ChatPage() {
                       onDeleteMessage={handleDelete}
                       replyingTo={replyingTo}
                       setReplyingTo={setReplyingTo}
+                      hasMoreMessages={hasMoreMessages}
+                      isFetchingHistory={isFetchingHistory}
+                      onLoadMore={handleLoadMore}
                     />
+                    {/* ▲▲▲ */}
                   </div>
                 </div>
                 <div

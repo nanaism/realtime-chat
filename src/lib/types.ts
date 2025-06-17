@@ -1,7 +1,6 @@
 export interface User {
   id: string; // サーバーで割り当てられるソケットID
   name: string;
-  // statusの型は既存のままとします
   status: "online" | "offline" | "away";
   position: { x: number; y: number };
   color: string;
@@ -11,17 +10,23 @@ export interface User {
 export interface Message {
   id: string;
   type: "user" | "system";
-  sender: string; // senderを必須に変更（systemメッセージでも送信者情報を持つため）
+  sender: string;
   content: string;
   timestamp: string;
-  reactions?: { [emoji: string]: string[] }; // 例: { "👍": ["user1", "user2"], "❤️": ["user1"] }
-  // ▼▼▼ リプライ機能のためのプロパティを追加 ▼▼▼
-  replyTo?: string; // リプライ先のメッセージID
+  reactions?: { [emoji: string]: string[] };
+  replyTo?: string;
   replyContext?: {
     sender: string;
     content: string;
   };
-  // ▲▲▲ 追加 ▲▲▲
+  // SystemMessageItemで利用するため、systemTypeを追加
+  systemType?:
+    | "join"
+    | "leave"
+    | "admin"
+    | "notification"
+    | "activity"
+    | "general";
 }
 
 export interface TypingStatus {
@@ -30,17 +35,16 @@ export interface TypingStatus {
   isTyping: boolean;
 }
 
-// =============================================================
-// ▼▼▼ ここからが emit方式に合わせた正しい型定義 ▼▼▼
-// =============================================================
-
 // サーバーからクライアントへ送られるイベント
 export interface ServerToClientEvents {
   /** ログインが成功したことをクライアントに通知します */
   "user:login_success": (currentUser: User) => void;
 
-  /** チャット履歴を送信します */
-  "chat:history": (history: Message[]) => void;
+  /** 初回のチャット履歴を送信します */
+  "chat:history": (data: { history: Message[]; hasMore: boolean }) => void; // ★ 変更
+
+  /** 過去のチャット履歴のチャンク（塊）を送信します */
+  "history:chunk": (data: { history: Message[]; hasMore: boolean }) => void; // ★ 追加
 
   /** 新しいメッセージを通知します */
   "message:new": (message: Message) => void;
@@ -72,6 +76,9 @@ export interface ClientToServerEvents {
   /** ユーザーがログインを試みます */
   "user:login": (userData: Omit<User, "id">) => void;
 
+  /** 過去のチャット履歴の取得を要求します */
+  "fetch:history": (data: { cursor: string }) => void; // ★ 追加
+
   /** メッセージを送信します */
   "message:send": (
     message: Omit<Message, "id" | "reactions" | "replyContext">
@@ -95,7 +102,7 @@ export interface ClientToServerEvents {
   /** 管理者権限でメッセージを削除します */
   "admin:message:delete": (data: { messageId: string }) => void;
 
-  /** ユーザー名の重複チェックを依頼します (これは元のコードにあったので残します) */
+  /** ユーザー名の重複チェックを依頼します */
   "user:check_name": (
     username: string,
     callback: (response: { available: boolean; message?: string }) => void

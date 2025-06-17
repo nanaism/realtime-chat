@@ -8,7 +8,7 @@
  * 主な機能:
  * - リアルタイムチャットメッセージング（コールバックによる堅牢なログイン処理）
  * - ユーザーの入退室管理と一覧表示
- * - チャット履歴の読み込み
+ * - チャット履歴の段階的読み込み（ページネーション）
  * - メッセージへのリアクション機能
  * - メッセージの削除機能（本人・管理者）
  * - 履歴の全削除機能
@@ -73,7 +73,7 @@ const port = process.env.PORT || 3000;
 const app = next({ dev });
 const handle = app.getRequestHandler();
 const users = new Map();
-const HISTORY_LIMIT = 100;
+const HISTORY_LIMIT_PER_FETCH = 50; // 1回あたりの取得件数
 
 // =================================================================
 // --- サーバーの起動とリクエスト処理 ---
@@ -130,47 +130,55 @@ app.prepare().then(() => {
       }
     });
 
-    /**
-     * イベント: 'user:login' (コールバック形式に改善)
-     * 用途: ユーザーのログイン処理。履歴の取得と入室メッセージの送信を行う。
-     * @param {object} userData - { name: string, avatar: string } などのユーザーデータ
-     * @param {function} callback - 結果をクライアントに返すためのコールバック関数
-     */
     socket.on("user:login", async (userData) => {
-      // コールバック引数を削除
       const currentUser = { ...userData, id: socket.id };
       users.set(socket.id, currentUser);
 
-      // --- 過去のチャット履歴をDBから取得 ---
+      // ▼▼▼ 過去のチャット履歴をDBから取得（初回読み込み用）▼▼▼
       try {
         const snapshot = await messagesRef
           .orderByChild("timestamp")
-          .limitToLast(HISTORY_LIMIT)
+          .limitToLast(HISTORY_LIMIT_PER_FETCH + 1) // hasMore判定のため+1件取得
           .once("value");
-        const historyData = snapshot.val();
-        const history = historyData
-          ? Object.entries(historyData).map(([id, msg]) => ({ id, ...msg }))
-          : [];
 
-        // ▼▼▼ ログインした本人にだけ成功通知と履歴を連続して送信 ▼▼▼
+        const historyData = snapshot.val();
+        let history = [];
+        let hasMore = false;
+        if (historyData) {
+          const allMessages = Object.entries(historyData).map(([id, msg]) => ({
+            id,
+            ...msg,
+          }));
+          allMessages.sort(
+            (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+          );
+
+          if (allMessages.length > HISTORY_LIMIT_PER_FETCH) {
+            hasMore = true;
+            history = allMessages.slice(1); // 判定用の1件を除外
+          } else {
+            hasMore = false;
+            history = allMessages;
+          }
+        }
+
         socket.emit("user:login_success", currentUser);
-        socket.emit("chat:history", history);
-        // ▲▲▲ 変更箇所 ▲▲▲
+        socket.emit("chat:history", { history, hasMore }); // hasMoreフラグも送信
 
         console.log(
-          `  📜 Sent ${history.length} history messages to ${currentUser.name}`
+          `  📜 Sent initial ${history.length} history messages to ${currentUser.name} (hasMore: ${hasMore})`
         );
       } catch (error) {
-        console.error("  ❌ Error fetching chat history:", error);
-        // エラー発生時は、成功通知のみ送り、空の履歴を返す
+        console.error("  ❌ Error fetching initial chat history:", error);
         socket.emit("user:login_success", currentUser);
-        socket.emit("chat:history", []);
+        socket.emit("chat:history", { history: [], hasMore: false });
       }
+      // ▲▲▲ 初回履歴取得のロジックを修正 ▲▲▲
 
       // --- 入室メッセージをDBに保存し、全員に通知 ---
-      // (これは非同期で実行されるため、上記のemitの後になる可能性があるが、影響は少ない)
       const systemMessage = {
         type: "system",
+        systemType: "join", // ★ systemTypeを追加
         sender: "System",
         content: `${currentUser.name} が入室しました`,
         timestamp: new Date().toISOString(),
@@ -189,6 +197,48 @@ app.prepare().then(() => {
       io.emit("users:update", Array.from(users.values()));
       console.log(`✅ User logged in: ${currentUser.name} (${socket.id})`);
     });
+
+    // ▼▼▼ 過去ログを遡って取得するためのハンドラを新設 ▼▼▼
+    socket.on("fetch:history", async ({ cursor }) => {
+      try {
+        const snapshot = await messagesRef
+          .orderByChild("timestamp")
+          .endBefore(cursor) // cursorのタイムスタンプより前のデータを対象
+          .limitToLast(HISTORY_LIMIT_PER_FETCH + 1)
+          .once("value");
+
+        const historyData = snapshot.val();
+        let history = [];
+        let hasMore = false;
+        if (historyData) {
+          const allMessages = Object.entries(historyData).map(([id, msg]) => ({
+            id,
+            ...msg,
+          }));
+          allMessages.sort(
+            (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+          );
+
+          if (allMessages.length > HISTORY_LIMIT_PER_FETCH) {
+            hasMore = true;
+            history = allMessages.slice(1);
+          } else {
+            hasMore = false;
+            history = allMessages;
+          }
+        }
+
+        socket.emit("history:chunk", { history, hasMore }); // 新しいイベント名で送信
+
+        console.log(
+          `  📜 Sent history chunk (${history.length} messages) to ${socket.id} (hasMore: ${hasMore})`
+        );
+      } catch (error) {
+        console.error("  ❌ Error fetching history chunk:", error);
+        socket.emit("history:chunk", { history: [], hasMore: false });
+      }
+    });
+    // ▲▲▲ 新しいハンドラ ▲▲▲
 
     socket.on("message:send", async (message) => {
       const user = users.get(socket.id);
@@ -277,6 +327,7 @@ app.prepare().then(() => {
         await messagesRef.remove();
         const systemMessage = {
           type: "system",
+          systemType: "admin", // ★ systemTypeを追加
           sender: "System",
           content: `${user.name} がチャット履歴を全削除しました。`,
           timestamp: new Date().toISOString(),
@@ -320,6 +371,7 @@ app.prepare().then(() => {
         users.delete(socket.id);
         const systemMessage = {
           type: "system",
+          systemType: "leave", // ★ systemTypeを追加
           sender: "System",
           content: `${userData.name} が退室しました`,
           timestamp: new Date().toISOString(),

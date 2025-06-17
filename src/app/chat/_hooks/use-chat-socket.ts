@@ -17,7 +17,7 @@ type ConnectionStatus = "connecting" | "connected" | "error";
 
 /**
  * チャットのソケット通信を管理するカスタムフック
- * (安定版ロジック + WebSocket接続の明示化による堅牢性向上版)
+ * (ページネーション対応版)
  */
 export function useChatSocket({ username }: UseChatSocketProps) {
   const [users, setUsers] = useState<User[]>([]);
@@ -25,9 +25,6 @@ export function useChatSocket({ username }: UseChatSocketProps) {
   const [typingUsers, setTypingUsers] = useState<
     { userId: string; name: string }[]
   >([]);
-  const [currentUserSocketId, setCurrentUserSocketId] = useState<string | null>(
-    null
-  );
   const socketRef = useRef<Socket<
     ServerToClientEvents,
     ClientToServerEvents
@@ -36,6 +33,12 @@ export function useChatSocket({ username }: UseChatSocketProps) {
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("connecting");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // ▼▼▼ ページネーション用のstateを追加 ▼▼▼
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true); // 初期値はtrue
+  // ▲▲▲
+
   const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -45,8 +48,14 @@ export function useChatSocket({ username }: UseChatSocketProps) {
         socketRef.current.disconnect();
         socketRef.current = null;
       }
+      // stateをリセット
       setConnectionStatus("connecting");
       setErrorMessage(null);
+      setMessages([]);
+      setUsers([]);
+      setTypingUsers([]);
+      setHasMoreMessages(true);
+      setIsFetchingHistory(false);
       return;
     }
 
@@ -58,6 +67,7 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     // --- 接続処理開始 ---
     setConnectionStatus("connecting");
     setErrorMessage(null);
+    setMessages([]); // 新しい接続の前にメッセージをクリア
 
     // 3. 5秒の接続・ログインタイムアウトを設定
     connectionTimeoutRef.current = setTimeout(() => {
@@ -84,7 +94,6 @@ export function useChatSocket({ username }: UseChatSocketProps) {
       process.env.NEXT_PUBLIC_SOCKET_URL || "",
       {
         reconnection: false, // エラー時はページ全体で制御
-        // ▼▼▼ 接続方式をWebSocketに限定して安定化を図る ▼▼▼
         transports: ["websocket"],
       }
     );
@@ -103,15 +112,26 @@ export function useChatSocket({ username }: UseChatSocketProps) {
       socket.emit("user:login", newUser);
     });
 
-    socket.on("user:login_success", (currentUser: User) => {
+    socket.on("user:login_success", () => {
       clearConnectionTimeout(); // ★★★ ログイン成功！タイムアウトを解除
-      setCurrentUserSocketId(currentUser.id);
       setConnectionStatus("connected"); // ★★★ この時点で接続完了とみなす
     });
 
-    socket.on("chat:history", (history: Message[]) => {
+    // ▼▼▼ 初回履歴読み込みのハンドラを更新 ▼▼▼
+    socket.on("chat:history", ({ history, hasMore }) => {
       setMessages(history);
+      setHasMoreMessages(hasMore);
     });
+    // ▲▲▲
+
+    // ▼▼▼ 過去ログのチャンクを受け取るハンドラを新設 ▼▼▼
+    socket.on("history:chunk", ({ history, hasMore }) => {
+      // 新しい履歴を既存のリストの「前」に追加
+      setMessages((prev) => [...history, ...prev]);
+      setHasMoreMessages(hasMore);
+      setIsFetchingHistory(false); // 読み込み完了
+    });
+    // ▲▲▲
 
     socket.on("user:login_error", ({ message }) => {
       console.error("[useChatSocket] Login failed:", message);
@@ -177,7 +197,24 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username]);
 
-  // ... (useCallbackでラップされた関数群は変更なし)
+  // ▼▼▼ 過去ログを取得する関数を新設 ▼▼▼
+  const fetchHistory = useCallback(() => {
+    if (
+      isFetchingHistory ||
+      !hasMoreMessages ||
+      !socketRef.current ||
+      messages.length === 0
+    ) {
+      return;
+    }
+    setIsFetchingHistory(true);
+    // 現在表示されている一番古いメッセージのタイムスタンプをカーソルとして使用
+    const oldestMessageTimestamp = messages[0].timestamp;
+    socketRef.current.emit("fetch:history", { cursor: oldestMessageTimestamp });
+  }, [isFetchingHistory, hasMoreMessages, messages]);
+  // ▲▲▲
+
+  // --- Emit関数群 ---
   const sendMessage = useCallback(
     (content: string, replyTo?: string) => {
       if (!content.trim() || !username || !socketRef.current) return;
@@ -222,11 +259,11 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     socketRef.current?.disconnect();
   }, []);
 
+  // ▼▼▼ returnオブジェクトに新しい値を追加 ▼▼▼
   return {
     users,
     messages,
     typingUsers: typingUsers.map((user) => user.name),
-    currentUserSocketId,
     connectionStatus,
     errorMessage,
     sendMessage,
@@ -237,5 +274,9 @@ export function useChatSocket({ username }: UseChatSocketProps) {
     deleteMessageAsAdmin,
     clearChatHistory,
     logout,
+    // --- ページネーション用 ---
+    hasMoreMessages,
+    isFetchingHistory,
+    fetchHistory,
   };
 }
