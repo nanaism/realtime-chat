@@ -404,6 +404,6 @@ app.prepare().then(() => {
       process.exit(1);
     })
     .listen(port, () => {
-      console.log(`\n🚀 Server ready on http://localhost:${port}`);
+      console.log(`\n🚀 Server ready on https://localhost:${port}`);
     });
 });

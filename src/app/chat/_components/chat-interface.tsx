@@ -136,7 +136,6 @@ const SYSTEM_MESSAGE_CONFIG = {
   },
 };
 
-// --- (Original components: DeleteConfirmation, SystemMessageItem, etc. remain unchanged) ---
 const DeleteConfirmation = ({
   onConfirm,
   onCancel,
@@ -150,55 +149,47 @@ const DeleteConfirmation = ({
     exit={{ opacity: 0, scale: 0.8, filter: "blur(10px)" }}
     className="absolute inset-0 flex items-center justify-center z-50"
   >
-    {" "}
     <motion.div
       className="bg-black/20 backdrop-blur-md absolute inset-0"
       onClick={onCancel}
-    />{" "}
+    />
     <motion.div
       className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-white/20 relative z-10 w-80 max-w-[90vw]"
       layoutId="delete-modal"
     >
-      {" "}
       <motion.div
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
         transition={{ delay: 0.1, type: "spring", stiffness: 500 }}
         className="w-16 h-16 bg-gradient-to-br from-red-500 to-pink-500 rounded-full mx-auto mb-4 flex items-center justify-center"
       >
-        {" "}
-        <Trash2 className="w-8 h-8 text-white" />{" "}
-      </motion.div>{" "}
+        <Trash2 className="w-8 h-8 text-white" />
+      </motion.div>
       <h3 className="text-lg font-bold font-sans text-center mb-2 bg-gradient-to-r from-red-500 to-pink-500 bg-clip-text text-transparent whitespace-nowrap">
-        {" "}
-        メッセージを削除しますか？{" "}
-      </h3>{" "}
+        メッセージを削除しますか？
+      </h3>
       <p className="text-sm font-sans text-slate-600 dark:text-slate-400 text-center mb-6">
-        {" "}
-        この操作は取り消せません{" "}
-      </p>{" "}
+        この操作は取り消せません
+      </p>
       <div className="flex gap-3">
-        {" "}
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={onCancel}
           className="flex-1 px-4 py-2 rounded-xl font-sans bg-slate-200/50 dark:bg-slate-700/50 backdrop-blur-sm hover:bg-slate-300/50 dark:hover:bg-slate-600/50 transition-colors"
         >
-          {" "}
-          キャンセル{" "}
-        </motion.button>{" "}
+          キャンセル
+        </motion.button>
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={onConfirm}
           className="flex-1 px-4 py-2 rounded-xl font-sans bg-gradient-to-r from-red-500 to-pink-500 text-white shadow-lg shadow-red-500/25 whitespace-nowrap"
         >
-          {" "}
-          削除{" "}
-        </motion.button>{" "}
-      </div>{" "}
-    </motion.div>{" "}
+          削除
+        </motion.button>
+      </div>
+    </motion.div>
   </motion.div>
 );
 const SystemMessageItem = memo(function SystemMessageItem({
@@ -223,9 +214,7 @@ const SystemMessageItem = memo(function SystemMessageItem({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {" "}
       <div className="relative group">
-        {" "}
         <motion.div
           className={` flex items-center gap-2 px-3 py-1.5 rounded-full ${
             config.bgColor
@@ -236,32 +225,26 @@ const SystemMessageItem = memo(function SystemMessageItem({
           } `}
           whileHover={{ scale: 1.02 }}
         >
-          {" "}
           <motion.div
             className={`w-4 h-4 rounded-full bg-gradient-to-r ${config.color} flex items-center justify-center`}
             animate={isHovered ? { rotate: 360 } : {}}
             transition={{ duration: 0.5 }}
           >
-            {" "}
-            <Icon className="w-2.5 h-2.5 text-white" />{" "}
-          </motion.div>{" "}
+            <Icon className="w-2.5 h-2.5 text-white" />
+          </motion.div>
           <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">
-            {" "}
-            {message.content}{" "}
-          </span>{" "}
+            {message.content}
+          </span>
           {showTimestamp && (
             <>
-              {" "}
-              <div className="w-px h-3 bg-slate-300 dark:bg-slate-600" />{" "}
+              <div className="w-px h-3 bg-slate-300 dark:bg-slate-600" />
               <span className="text-xs text-slate-400 dark:text-slate-500">
-                {" "}
-                {formatDistanceToNow(new Date(message.timestamp))}{" "}
-              </span>{" "}
+                {formatDistanceToNow(new Date(message.timestamp))}
+              </span>
             </>
-          )}{" "}
-        </motion.div>{" "}
+          )}
+        </motion.div>
         <AnimatePresence>
-          {" "}
           {isAdminMode && isHovered && (
             <motion.button
               initial={{ opacity: 0, scale: 0.5, x: "-50%" }}
@@ -273,12 +256,11 @@ const SystemMessageItem = memo(function SystemMessageItem({
               className="absolute -bottom-8 left-1/2 p-1.5 rounded-lg bg-red-500/90 text-white shadow-lg backdrop-blur-sm"
               title="メッセージを削除"
             >
-              {" "}
-              <Trash2 className="w-3 h-3" />{" "}
+              <Trash2 className="w-3 h-3" />
             </motion.button>
-          )}{" "}
-        </AnimatePresence>{" "}
-      </div>{" "}
+          )}
+        </AnimatePresence>
+      </div>
     </motion.div>
   );
 });
@@ -312,7 +294,6 @@ const CollapsibleSystemMessages = memo(function CollapsibleSystemMessages({
   }, [group.messages]);
   return (
     <div className="flex flex-col items-center py-2">
-      {" "}
       <motion.button
         onClick={() => setIsOpen(!isOpen)}
         onMouseEnter={() => setIsHovered(true)}
@@ -321,7 +302,6 @@ const CollapsibleSystemMessages = memo(function CollapsibleSystemMessages({
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
       >
-        {" "}
         <motion.div
           className={` flex items-center gap-3 px-4 py-2 rounded-full bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border ${
             isOpen
@@ -329,9 +309,7 @@ const CollapsibleSystemMessages = memo(function CollapsibleSystemMessages({
               : "border-slate-200 dark:border-slate-700"
           } shadow-sm hover:shadow-md transition-all duration-300 `}
         >
-          {" "}
           <div className="flex -space-x-2">
-            {" "}
             {messageTypes.slice(0, 3).map(([type], index) => {
               const config =
                 SYSTEM_MESSAGE_CONFIG[
@@ -346,47 +324,40 @@ const CollapsibleSystemMessages = memo(function CollapsibleSystemMessages({
                   transition={{ delay: index * 0.05 }}
                   className={` w-6 h-6 rounded-full bg-gradient-to-r ${config.color} flex items-center justify-center ring-2 ring-white dark:ring-slate-800 `}
                 >
-                  {" "}
-                  <Icon className="w-3 h-3 text-white" />{" "}
+                  <Icon className="w-3 h-3 text-white" />
                 </motion.div>
               );
-            })}{" "}
-          </div>{" "}
+            })}
+          </div>
           <div className="flex items-center gap-2">
-            {" "}
             <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-              {" "}
-              {group.messages.length}件のシステムイベント{" "}
-            </span>{" "}
+              {group.messages.length}件のシステムイベント
+            </span>
             {timeRange && !isOpen && (
               <>
-                {" "}
-                <div className="w-px h-4 bg-slate-300 dark:bg-slate-600" />{" "}
-                <Clock className="w-3 h-3 text-slate-400" />{" "}
+                <div className="w-px h-4 bg-slate-300 dark:bg-slate-600" />
+                <Clock className="w-3 h-3 text-slate-400" />
                 <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {" "}
-                  {timeRange.end}{" "}
-                </span>{" "}
+                  {timeRange.end}
+                </span>
               </>
-            )}{" "}
-          </div>{" "}
+            )}
+          </div>
           <motion.div
             animate={{ rotate: isOpen ? 180 : 0 }}
             transition={{ duration: 0.3, ease: "easeInOut" }}
           >
-            {" "}
-            <ChevronDown className="w-4 h-4 text-slate-400" />{" "}
-          </motion.div>{" "}
-        </motion.div>{" "}
+            <ChevronDown className="w-4 h-4 text-slate-400" />
+          </motion.div>
+        </motion.div>
         <motion.div
           className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 via-purple-400/20 to-pink-400/20 blur-xl"
           initial={{ opacity: 0 }}
           animate={{ opacity: isHovered ? 1 : 0 }}
           transition={{ duration: 0.3 }}
-        />{" "}
-      </motion.button>{" "}
+        />
+      </motion.button>
       <AnimatePresence>
-        {" "}
         {isOpen && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
@@ -395,15 +366,12 @@ const CollapsibleSystemMessages = memo(function CollapsibleSystemMessages({
             transition={{ duration: 0.3, ease: "easeInOut" }}
             className="w-full max-w-2xl mt-3 overflow-hidden"
           >
-            {" "}
             <motion.div
               className="p-4 bg-white/40 dark:bg-slate-800/40 backdrop-blur-sm rounded-2xl border border-slate-200/50 dark:border-slate-700/50 space-y-2"
               initial={{ y: -10 }}
               animate={{ y: 0 }}
             >
-              {" "}
               <div className="flex flex-wrap gap-2 mb-3">
-                {" "}
                 {messageTypes.map(([type, count]) => {
                   const config =
                     SYSTEM_MESSAGE_CONFIG[
@@ -417,18 +385,15 @@ const CollapsibleSystemMessages = memo(function CollapsibleSystemMessages({
                       animate={{ opacity: 1, scale: 1 }}
                       className={` flex items-center gap-1.5 px-2.5 py-1 rounded-full ${config.bgColor} ${config.borderColor} border `}
                     >
-                      {" "}
-                      <Icon className="w-3 h-3 text-slate-600 dark:text-slate-400" />{" "}
+                      <Icon className="w-3 h-3 text-slate-600 dark:text-slate-400" />
                       <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                        {" "}
-                        {count}{" "}
-                      </span>{" "}
+                        {count}
+                      </span>
                     </motion.div>
                   );
-                })}{" "}
-              </div>{" "}
+                })}
+              </div>
               <div className="space-y-1.5">
-                {" "}
                 {group.messages.map((msg, index) => (
                   <motion.div
                     key={msg.id}
@@ -436,20 +401,19 @@ const CollapsibleSystemMessages = memo(function CollapsibleSystemMessages({
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.02 }}
                   >
-                    {" "}
                     <SystemMessageItem
                       message={msg}
                       isAdminMode={isAdminMode}
                       onDeleteClick={onDeleteClick}
                       showTimestamp={true}
-                    />{" "}
+                    />
                   </motion.div>
-                ))}{" "}
-              </div>{" "}
-            </motion.div>{" "}
+                ))}
+              </div>
+            </motion.div>
           </motion.div>
-        )}{" "}
-      </AnimatePresence>{" "}
+        )}
+      </AnimatePresence>
     </div>
   );
 });
@@ -504,52 +468,42 @@ const UserMessageItem = memo(function UserMessageItem({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {" "}
       <div
         className={`flex gap-3 ${
           message.sender === currentUser ? "justify-end" : "justify-start"
         }`}
       >
-        {" "}
         {message.sender !== currentUser && (
           <motion.div
             whileHover={{ scale: 1.1, rotate: 5 }}
             transition={{ type: "spring", stiffness: 300 }}
           >
-            {" "}
             <Avatar className="h-10 w-10 ring-2 ring-white dark:ring-slate-800 shadow-lg">
-              {" "}
               <AvatarImage
                 src={`https://api.dicebear.com/7.x/notionists/svg?seed=${message.sender}`}
-              />{" "}
+              />
               <AvatarFallback className="bg-gradient-to-br from-blue-400 to-violet-400 text-white font-semibold">
-                {" "}
-                {message.sender?.charAt(0) || "?"}{" "}
-              </AvatarFallback>{" "}
-            </Avatar>{" "}
+                {message.sender?.charAt(0) || "?"}
+              </AvatarFallback>
+            </Avatar>
           </motion.div>
-        )}{" "}
+        )}
         <div
           className={`max-w-[80%] ${
             message.sender === currentUser ? "order-first" : ""
           }`}
         >
-          {" "}
           <div className="flex items-center gap-2 mb-1.5">
-            {" "}
             {message.sender !== currentUser && (
               <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                {" "}
-                {message.sender}{" "}
+                {message.sender}
               </span>
-            )}{" "}
+            )}
             <span className="text-xs text-slate-400 dark:text-slate-500">
-              {" "}
-              {formatDistanceToNow(new Date(message.timestamp))}{" "}
-            </span>{" "}
-          </div>{" "}
+              {formatDistanceToNow(new Date(message.timestamp))}
+            </span>
+          </div>
           <div className="relative">
-            {" "}
             <motion.div
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.98 }}
@@ -560,10 +514,10 @@ const UserMessageItem = memo(function UserMessageItem({
                   : "bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border border-slate-200/50 dark:border-slate-700/50 shadow-lg"
               }`}
             >
-              {" "}
               {message.sender === currentUser && (
                 <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-white/20 opacity-50" />
-              )}{" "}
+              )}
+              {/* ▼▼▼ ここからが修正箇所です ▼▼▼ */}
               <div
                 className={`relative z-10 break-words whitespace-pre-wrap ${
                   message.sender !== currentUser
@@ -571,7 +525,6 @@ const UserMessageItem = memo(function UserMessageItem({
                     : ""
                 }`}
               >
-                {" "}
                 {message.replyContext && message.replyTo && (
                   <motion.a
                     initial={{ opacity: 0, y: -10 }}
@@ -589,17 +542,15 @@ const UserMessageItem = memo(function UserMessageItem({
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                   >
-                    {" "}
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse" />{" "}
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse" />
                     <div className="flex items-center gap-2 mb-1">
-                      {" "}
                       <MessageSquareReply
                         className={`w-3 h-3 ${
                           message.sender === currentUser
                             ? "text-white/70"
                             : "text-blue-600 dark:text-blue-400"
                         }`}
-                      />{" "}
+                      />
                       <span
                         className={`text-xs font-bold ${
                           message.sender === currentUser
@@ -607,10 +558,9 @@ const UserMessageItem = memo(function UserMessageItem({
                             : "bg-gradient-to-r from-blue-600 to-violet-600 dark:from-blue-400 dark:to-violet-400 bg-clip-text text-transparent"
                         }`}
                       >
-                        {" "}
-                        {message.replyContext.sender} さんへの返信{" "}
-                      </span>{" "}
-                    </div>{" "}
+                        {message.replyContext.sender} さんへの返信
+                      </span>
+                    </div>
                     <p
                       className={`text-sm line-clamp-2 ${
                         message.sender === currentUser
@@ -618,9 +568,8 @@ const UserMessageItem = memo(function UserMessageItem({
                           : "text-slate-600 dark:text-slate-300"
                       }`}
                     >
-                      {" "}
-                      {message.replyContext.content}{" "}
-                    </p>{" "}
+                      {message.replyContext.content}
+                    </p>
                     <motion.div
                       className="absolute top-0 right-0 w-20 h-20 opacity-10"
                       animate={{ rotate: 360 }}
@@ -630,23 +579,22 @@ const UserMessageItem = memo(function UserMessageItem({
                         ease: "linear",
                       }}
                     >
-                      {" "}
-                      <MessageSquareReply className="w-full h-full" />{" "}
-                    </motion.div>{" "}
+                      <MessageSquareReply className="w-full h-full" />
+                    </motion.div>
                   </motion.a>
-                )}{" "}
-                {message.content}{" "}
-              </div>{" "}
-            </motion.div>{" "}
+                )}
+                {/* 問題となっていた不要な空白を削除しました */}
+                {message.content}
+              </div>
+              {/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */}
+            </motion.div>
             <div
               className="absolute -bottom-6 flex gap-1.5 px-2"
               style={
                 message.sender === currentUser ? { right: 0 } : { left: 0 }
               }
             >
-              {" "}
               <AnimatePresence>
-                {" "}
                 {message.reactions &&
                   Object.entries(message.reactions).map(
                     ([emoji, users]) =>
@@ -675,7 +623,6 @@ const UserMessageItem = memo(function UserMessageItem({
                               : "bg-white/95 dark:bg-slate-800/95 backdrop-blur-xl border-slate-200/50 dark:border-slate-600/50 hover:border-blue-400/50 hover:shadow-2xl"
                           }`}
                         >
-                          {" "}
                           <motion.div
                             className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/0 via-purple-400/0 to-pink-400/0 group-hover:from-blue-400/20 group-hover:via-purple-400/20 group-hover:to-pink-400/20"
                             initial={{ opacity: 0 }}
@@ -684,7 +631,7 @@ const UserMessageItem = memo(function UserMessageItem({
                                 ? { opacity: 1 }
                                 : { opacity: 0 }
                             }
-                          />{" "}
+                          />
                           <motion.span
                             className="text-base relative z-10"
                             animate={
@@ -697,9 +644,8 @@ const UserMessageItem = memo(function UserMessageItem({
                             }
                             transition={{ duration: 0.5 }}
                           >
-                            {" "}
-                            {emoji}{" "}
-                          </motion.span>{" "}
+                            {emoji}
+                          </motion.span>
                           <span
                             className={`font-bold text-xs relative z-10 ${
                               users.includes(currentUser)
@@ -707,24 +653,21 @@ const UserMessageItem = memo(function UserMessageItem({
                                 : "text-slate-600 dark:text-slate-300"
                             }`}
                           >
-                            {" "}
-                            {users.length}{" "}
-                          </span>{" "}
+                            {users.length}
+                          </span>
                           <motion.div
                             initial={{ opacity: 0, y: 5 }}
                             whileHover={{ opacity: 1, y: 0 }}
                             className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-slate-900/95 text-white text-xs rounded-lg backdrop-blur-xl whitespace-nowrap pointer-events-none shadow-xl"
                           >
-                            {" "}
-                            {users.join(", ")}{" "}
-                          </motion.div>{" "}
+                            {users.join(", ")}
+                          </motion.div>
                         </motion.button>
                       )
-                  )}{" "}
-              </AnimatePresence>{" "}
-            </div>{" "}
+                  )}
+              </AnimatePresence>
+            </div>
             <AnimatePresence>
-              {" "}
               {isHovered && (
                 <motion.div
                   initial={{ opacity: 0, y: 10, scale: 0.8 }}
@@ -735,9 +678,7 @@ const UserMessageItem = memo(function UserMessageItem({
                     message.sender === currentUser ? "right-2" : "left-2"
                   }`}
                 >
-                  {" "}
                   <div className="flex items-center gap-2">
-                    {" "}
                     <motion.button
                       whileHover={{
                         scale: 1.1,
@@ -749,9 +690,8 @@ const UserMessageItem = memo(function UserMessageItem({
                       className="w-10 h-10 rounded-xl flex items-center justify-center bg-gradient-to-br from-blue-500/90 to-violet-500/90 backdrop-blur-2xl shadow-2xl border border-white/20 hover:from-blue-600/90 hover:to-violet-600/90 group transition-all"
                       title="リプライ"
                     >
-                      {" "}
-                      <MessageSquareReply className="w-5 h-5 text-white group-hover:scale-110 transition-transform" />{" "}
-                    </motion.button>{" "}
+                      <MessageSquareReply className="w-5 h-5 text-white group-hover:scale-110 transition-transform" />
+                    </motion.button>
                     <motion.div
                       className="relative"
                       initial={{ rotateX: -20 }}
@@ -759,10 +699,8 @@ const UserMessageItem = memo(function UserMessageItem({
                       transition={{ duration: 0.3 }}
                       style={{ transformStyle: "preserve-3d" }}
                     >
-                      {" "}
                       <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-2xl shadow-2xl rounded-2xl p-2 flex gap-1 border border-slate-200/50 dark:border-slate-600/50">
-                        {" "}
-                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 rounded-2xl" />{" "}
+                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 rounded-2xl" />
                         {EMOJI_REACTIONS.map((emoji, index) => {
                           const hasReacted =
                             message.reactions?.[emoji]?.includes(currentUser);
@@ -794,16 +732,14 @@ const UserMessageItem = memo(function UserMessageItem({
                                   : "hover:bg-gradient-to-br hover:from-slate-100/50 hover:to-slate-200/50 dark:hover:from-slate-700/50 dark:hover:to-slate-600/50"
                               }`}
                             >
-                              {" "}
                               <span className="text-xl group-hover:drop-shadow-lg transition-all">
-                                {" "}
-                                {emoji}{" "}
-                              </span>{" "}
+                                {emoji}
+                              </span>
                             </motion.button>
                           );
-                        })}{" "}
-                      </div>{" "}
-                    </motion.div>{" "}
+                        })}
+                      </div>
+                    </motion.div>
                     {(message.sender === currentUser || isAdminMode) && (
                       <motion.button
                         whileHover={{ scale: 1.1, rotate: [0, -5, 5, 0] }}
@@ -812,41 +748,37 @@ const UserMessageItem = memo(function UserMessageItem({
                         className="relative p-2.5 rounded-xl bg-gradient-to-br from-red-500/90 to-pink-500/90 text-white backdrop-blur-xl shadow-xl border border-red-400/20 group overflow-hidden"
                         title="メッセージを削除"
                       >
-                        {" "}
                         <motion.div
                           className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/20 to-white/0"
                           initial={{ x: "-100%" }}
                           whileHover={{ x: "100%" }}
                           transition={{ duration: 0.5 }}
-                        />{" "}
-                        <Trash2 className="w-4 h-4 relative z-10" />{" "}
+                        />
+                        <Trash2 className="w-4 h-4 relative z-10" />
                       </motion.button>
-                    )}{" "}
-                  </div>{" "}
+                    )}
+                  </div>
                 </motion.div>
-              )}{" "}
-            </AnimatePresence>{" "}
-          </div>{" "}
-        </div>{" "}
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
         {message.sender === currentUser && (
           <motion.div
             whileHover={{ scale: 1.1, rotate: -5 }}
             transition={{ type: "spring", stiffness: 300 }}
           >
-            {" "}
             <Avatar className="h-10 w-10 ring-2 ring-white dark:ring-slate-800 shadow-lg">
-              {" "}
               <AvatarImage
                 src={`https://api.dicebear.com/7.x/notionists/svg?seed=${message.sender}`}
-              />{" "}
+              />
               <AvatarFallback className="bg-gradient-to-br from-violet-400 to-purple-400 text-white font-semibold">
-                {" "}
-                {message.sender.charAt(0)}{" "}
-              </AvatarFallback>{" "}
-            </Avatar>{" "}
+                {message.sender.charAt(0)}
+              </AvatarFallback>
+            </Avatar>
           </motion.div>
-        )}{" "}
-      </div>{" "}
+        )}
+      </div>
     </motion.div>
   );
 });
@@ -1317,7 +1249,6 @@ export default function ChatInterface({
                   >
                     {isFetchingHistory ? (
                       <>
-                        {" "}
                         <motion.div
                           animate={{ rotate: 360 }}
                           transition={{
@@ -1326,10 +1257,9 @@ export default function ChatInterface({
                             ease: "linear",
                           }}
                         >
-                          {" "}
-                          <Loader2 className="mr-2 h-4 w-4" />{" "}
-                        </motion.div>{" "}
-                        読み込み中...{" "}
+                          <Loader2 className="mr-2 h-4 w-4" />
+                        </motion.div>
+                        読み込み中...
                       </>
                     ) : (
                       "↑ 上のメッセージを見る"
@@ -1397,8 +1327,7 @@ export default function ChatInterface({
                       padding: "0.25rem 1rem",
                     }}
                   >
-                    {" "}
-                    {content()}{" "}
+                    {content()}
                   </div>
                 );
               })}
@@ -1413,14 +1342,12 @@ export default function ChatInterface({
                   className="flex items-center gap-3 p-4"
                 >
                   <Avatar>
-                    {" "}
                     <AvatarImage
                       src={`https://api.dicebear.com/7.x/notionists/svg?seed=${typingUsers[0]}`}
-                    />{" "}
+                    />
                   </Avatar>
                   <span className="text-sm text-slate-500 dark:text-slate-400">
-                    {" "}
-                    {typingUsers.join(", ")} が入力中...{" "}
+                    {typingUsers.join(", ")} が入力中...
                   </span>
                 </motion.div>
               )}
@@ -1468,9 +1395,8 @@ export default function ChatInterface({
                     }}
                   />
                   <div className="relative z-10 flex items-center gap-2.5">
-                    {" "}
-                    <ArrowDown className="h-5 w-5" />{" "}
-                    <span className="text-sm font-semibold">一番下に戻る</span>{" "}
+                    <ArrowDown className="h-5 w-5" />
+                    <span className="text-sm font-semibold">一番下に戻る</span>
                   </div>
                 </motion.button>
                 <AnimatePresence>
@@ -1512,21 +1438,17 @@ export default function ChatInterface({
               <div className="bg-gradient-to-r from-blue-50 to-violet-50 dark:from-slate-800 dark:to-slate-700 rounded-xl p-3 flex items-center justify-between gap-3 border border-blue-200/50 dark:border-blue-700/50 shadow-lg">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center flex-shrink-0">
-                    {" "}
-                    <MessageSquareReply className="w-5 h-5 text-white" />{" "}
+                    <MessageSquareReply className="w-5 h-5 text-white" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {" "}
-                      返信先:{" "}
+                      返信先:
                       <span className="font-bold bg-gradient-to-r from-blue-600 to-violet-600 dark:from-blue-400 dark:to-violet-400 bg-clip-text text-transparent">
-                        {" "}
-                        {replyingTo.sender}{" "}
-                      </span>{" "}
+                        {replyingTo.sender}
+                      </span>
                     </p>
                     <p className="text-sm text-slate-700 dark:text-slate-200 truncate font-medium">
-                      {" "}
-                      {replyingTo.content}{" "}
+                      {replyingTo.content}
                     </p>
                   </div>
                 </div>
@@ -1544,7 +1466,6 @@ export default function ChatInterface({
           )}
         </AnimatePresence>
 
-        {/* --- MODIFIED: Input Area --- */}
         <div className="relative p-4 pt-2 border-t border-slate-200/50 dark:border-slate-800/50 bg-gradient-to-b from-white/70 to-white/90 dark:from-slate-900/70 dark:to-slate-900/90 backdrop-blur-xl">
           <motion.div
             animate={{
@@ -1666,8 +1587,7 @@ export default function ChatInterface({
                           animate={{ scale: [1, 1.2, 1] }}
                           exit={{ scale: 0 }}
                         >
-                          {" "}
-                          <Zap className="h-5 w-5" />{" "}
+                          <Zap className="h-5 w-5" />
                         </motion.div>
                       ) : (
                         <motion.div
@@ -1676,8 +1596,7 @@ export default function ChatInterface({
                           animate={{ scale: 1 }}
                           exit={{ scale: 0 }}
                         >
-                          {" "}
-                          <Send className="h-5 w-5" />{" "}
+                          <Send className="h-5 w-5" />
                         </motion.div>
                       )}
                     </AnimatePresence>

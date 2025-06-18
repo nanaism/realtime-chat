@@ -20,7 +20,7 @@ type ConnectionStatus = "connecting" | "connected" | "error";
 // なければローカル開発用のURLをフォールバックとして使用します。
 // これにより、環境変数の設定漏れも防げます。
 const SERVER_URL =
-  process.env.NEXT_PUBLIC_SOCKET_SERVER_URL || "http://localhost:3000";
+  process.env.NEXT_PUBLIC_SOCKET_SERVER_URL || "https://localhost:3000";
 
 /**
  * チャットのソケット通信を管理するカスタムフック
