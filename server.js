@@ -72,7 +72,7 @@ const port = process.env.PORT || 3000;
 const app = next({ dev });
 const handle = app.getRequestHandler();
 const users = new Map();
-const HISTORY_LIMIT_PER_FETCH = 50; // 1回あたりの取得件数
+const HISTORY_LIMIT_PER_FETCH = 100; // 1回あたりの取得件数
 
 // =================================================================
 // --- サーバーの起動とリクエスト処理 ---
