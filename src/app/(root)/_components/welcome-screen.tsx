@@ -879,6 +879,8 @@ export default function WelcomeScreen() {
     }
   }, []);
 
+  // ... (useCallbackの前まで)
+
   const handleUsernameChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const input = e.target;
@@ -889,30 +891,49 @@ export default function WelcomeScreen() {
       setIsPlaceholderVisible(value === "");
       if (error) setError(null);
 
+      // 文字を削除したときはパーティクルを出さない
       if (value.length < prevValue.length) return;
 
       const hiddenDiv = hiddenCaretDivRef.current;
-      if (hiddenDiv && inputRef.current) {
-        const inputRect = inputRef.current.getBoundingClientRect();
+      const inputElement = inputRef.current;
+
+      if (hiddenDiv && inputElement) {
+        // 1. input要素の現在の位置とサイズを取得
+        const inputRect = inputElement.getBoundingClientRect();
         const selectionEnd = input.selectionEnd || 0;
 
+        // 2. カーソルまでのテキストをhiddenDivにコピー
         const textBeforeCaret = value.substring(0, selectionEnd);
         hiddenDiv.textContent = textBeforeCaret;
 
+        // 3. hiddenDivの基準位置を取得
+        const hiddenDivRect = hiddenDiv.getBoundingClientRect();
+
+        // 4. テキストの末尾に空のspanを追加して、その位置をカーソル位置とする
         const caretSpan = document.createElement("span");
         hiddenDiv.appendChild(caretSpan);
-
         const caretRect = caretSpan.getBoundingClientRect();
 
-        const x = caretRect.left + window.scrollX;
-        const y = inputRect.top + inputRect.height / 2 + window.scrollY;
+        // 5. 【重要】正しい座標を計算
+        //    input内でのカーソルの相対的なXオフセットを計算
+        //    = (hiddenDiv内のカーソル位置) - (hiddenDiv自体の位置)
+        const caretOffsetX = caretRect.left - hiddenDivRect.left;
 
+        //    最終的なX座標 = input要素の左端 + 相対Xオフセット
+        const x = inputRect.left + caretOffsetX;
+
+        //    Y座標はinput要素の垂直方向の中央が美しい
+        const y = inputRect.top + inputRect.height / 2;
+
+        // 6. 計算した正しい座標でパーティクルを生成
         createTypingParticle(x, y);
 
+        // 7. 後片付け
         hiddenDiv.removeChild(caretSpan);
+        hiddenDiv.textContent = ""; // 次の入力のためにクリアしておくとより安全
       }
     },
-    [username, error, createTypingParticle]
+    [username, error, createTypingParticle] // 依存配列は変更なし
   );
 
   const features = [
