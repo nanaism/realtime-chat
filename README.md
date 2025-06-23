@@ -1,4 +1,6 @@
+![FireShot Webpage Capture 026 - 'Oga Space' - chat aiichiro jp](https://github.com/user-attachments/assets/c5c633d2-989a-4cec-8c26-0e8d43a9564a)
 # 必須機能
+
 - ユーザー登録：
 - チャットに参加するユーザー名を入力し、登録する。
 - メッセージ送信：
